@@ -454,11 +454,23 @@ export function staffMeasures(
 ): StaffMeasure[] {
   const count = Math.max(1, barCountOf(grid, totalTicks));
   const measures: StaffMeasure[] = [];
+  // `staffItems` hands the ribbon over in order, and then each bar is the next
+  // run of it: one walk instead of a filter over the whole piece per bar.
+  let sorted = true;
+  for (let at = 1; at < items.length && sorted; at++) sorted = items[at - 1].start <= items[at].start;
+  let next = 0;
 
   for (let index = 0; index < count; index++) {
     const start = barStartOf(grid, index);
     const barTicks = barTicksOf(grid, index);
-    const inBar = items.filter((item) => item.start >= start && item.start < start + barTicks);
+    let inBar: StaffItem[];
+    if (sorted) {
+      while (next < items.length && items[next].start < start) next++;
+      inBar = [];
+      while (next < items.length && items[next].start < start + barTicks) inBar.push(items[next++]);
+    } else {
+      inBar = items.filter((item) => item.start >= start && item.start < start + barTicks);
+    }
     const filled = inBar.reduce((sum, item) => sum + item.ticks, 0);
 
     if (filled < barTicks) {
@@ -792,11 +804,15 @@ export const CLEF_SPLIT_MARGIN = 6;
  * the average halves the bars carrying a ladder over 18 semitones (37 → 17) and
  * takes fewer clef changes to do it (129 → 112).
  */
-function clefCost(pitches: readonly number[], clef: Clef): number {
+/** How far a pitch sits off a staff, in semitones: 0 on it. */
+function outside(midi: number, clef: Clef): number {
   const [low, high] = STAFF_SPAN[clef];
-  const outside = (midi: number) => Math.max(0, midi - high, low - midi);
-  const worst = pitches.reduce((max, midi) => Math.max(max, outside(midi)), 0);
-  const mean = pitches.reduce((sum, midi) => sum + outside(midi), 0) / pitches.length;
+  return Math.max(0, midi - high, low - midi);
+}
+
+function clefCost(pitches: readonly number[], clef: Clef): number {
+  const worst = pitches.reduce((max, midi) => Math.max(max, outside(midi, clef)), 0);
+  const mean = pitches.reduce((sum, midi) => sum + outside(midi, clef), 0) / pitches.length;
   // The average never outweighs a semitone of the worst ladder; it only settles
   // bars the worst excursion calls a draw.
   return worst + mean / 100;
@@ -889,13 +905,34 @@ function otherClef(clef: Clef): Clef {
  * that need it rather than in front of ones that were fine either way.
  */
 function bestSplit(notes: readonly BarNote[], from: Clef): { tick: number; cost: number } | null {
-  const ticks = [...new Set(notes.map((note) => note.tick))].sort((a, b) => a - b);
+  // Each half's `clefCost` from running totals rather than a filter per place:
+  // the worst ladder and the sum of the ladders before it, and from it on.
+  const ordered = [...notes].sort((a, b) => a.tick - b.tick);
+  const n = ordered.length;
+  const to = otherClef(from);
+  const worstBefore = new Float64Array(n + 1);
+  const sumBefore = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) {
+    const out = outside(ordered[i].midi, from);
+    worstBefore[i + 1] = Math.max(worstBefore[i], out);
+    sumBefore[i + 1] = sumBefore[i] + out;
+  }
+  const worstAfter = new Float64Array(n + 1);
+  const sumAfter = new Float64Array(n + 1);
+  for (let i = n - 1; i >= 0; i--) {
+    const out = outside(ordered[i].midi, to);
+    worstAfter[i] = Math.max(worstAfter[i + 1], out);
+    sumAfter[i] = sumAfter[i + 1] + out;
+  }
   let best: { tick: number; cost: number } | null = null;
-  for (const tick of ticks.slice(1)) {
-    const before = notes.filter((note) => note.tick < tick).map((note) => note.midi);
-    const after = notes.filter((note) => note.tick >= tick).map((note) => note.midi);
-    const cost = Math.max(clefCost(before, from), clefCost(after, otherClef(from)));
-    if (!best || cost <= best.cost) best = { tick, cost };
+  // Never at the first note: from the first head that starts later on.
+  for (let at = 1; at < n; at++) {
+    if (ordered[at].tick === ordered[at - 1].tick) continue;
+    const cost = Math.max(
+      worstBefore[at] + sumBefore[at] / at / 100,
+      worstAfter[at] + sumAfter[at] / (n - at) / 100
+    );
+    if (!best || cost <= best.cost) best = { tick: ordered[at].tick, cost };
   }
   return best;
 }
