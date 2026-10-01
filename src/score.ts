@@ -646,78 +646,6 @@ export function crossBarRuns(
   return runs;
 }
 
-/** Puts each crossing run's part on its heads, the way `attachAccents` does. */
-function attachCrossBar(
-  bars: ScoreItem[][],
-  runs: ReadonlyMap<number, 'start' | 'join'>
-): ScoreItem[][] {
-  if (runs.size === 0) return bars;
-  return bars.map((items) =>
-    items.map((item) =>
-      item.midi !== null && !item.tieStop && runs.has(item.start)
-        ? { ...item, across: runs.get(item.start) }
-        : item
-    )
-  );
-}
-
-/** Puts an accent on the HEAD of each note `accentedStarts` picked, the way `attachGrace` does. */
-function attachAccents(bars: ScoreItem[][], starts: ReadonlySet<number>): ScoreItem[][] {
-  if (starts.size === 0) return bars;
-  return bars.map((items) =>
-    items.map((item) =>
-      item.midi !== null && !item.tieStop && starts.has(item.start)
-        ? { ...item, accent: true }
-        : item
-    )
-  );
-}
-
-/** Marks the HEAD of each echo note, the way `attachAccents` marks an accented one. */
-function attachEcho(bars: ScoreItem[][], starts: ReadonlySet<number>): ScoreItem[][] {
-  if (starts.size === 0) return bars;
-  return bars.map((items) =>
-    items.map((item) =>
-      item.midi !== null && !item.tieStop && starts.has(item.start) ? { ...item, echo: true } : item
-    )
-  );
-}
-
-/** Puts each note's own APU level on its HEAD, the way `attachAccents` puts an accent there. */
-function attachVolumes(
-  bars: ScoreItem[][],
-  notes: readonly { start: number; volume?: number }[]
-): ScoreItem[][] {
-  const levels = new Map(
-    notes
-      .filter((note): note is { start: number; volume: number } => note.volume !== undefined)
-      .map((note) => [note.start, note.volume])
-  );
-  if (levels.size === 0) return bars;
-  return bars.map((items) =>
-    items.map((item) =>
-      item.midi !== null && !item.tieStop && levels.has(item.start)
-        ? { ...item, volume: levels.get(item.start) }
-        : item
-    )
-  );
-}
-
-/** Puts each note's grace notes on its HEAD, the way `attachEffects` puts its effect there. */
-function attachGrace(bars: ScoreItem[][], notes: readonly ScoreNote[]): ScoreItem[][] {
-  const graces = new Map(
-    notes.filter((note) => note.grace?.length).map((note) => [note.start, note.grace!])
-  );
-  if (graces.size === 0) return bars;
-  return bars.map((items) =>
-    items.map((item) =>
-      item.midi !== null && !item.tieStop && graces.has(item.start)
-        ? { ...item, grace: graces.get(item.start) }
-        : item
-    )
-  );
-}
-
 /** Whether an effect is drawn along its note — and so has to carry on where the note does. */
 export function drawnAlong(effect: PitchEffect, measureTicks = MEASURE_TICKS): boolean {
   return (
@@ -728,28 +656,67 @@ export function drawnAlong(effect: PitchEffect, measureTicks = MEASURE_TICKS): b
 }
 
 /**
- * Puts each note's effect on its HEAD — the first piece of it, never a piece
- * tied on after a bar line, which would mark one movement twice. The pieces
- * tied on after it get a `carry` instead, when the effect is drawn along the note.
+ * Puts what each note carries on its HEAD — the first piece of it, never a
+ * piece tied on after a bar line, which would mark one note twice: its effect,
+ * grace notes, accent, echo, level, and its part in a beam across the bar line.
+ * The pieces tied on after a head get a `carry` instead, when the effect is
+ * drawn along the note.
+ *
+ * In place, and in one walk: the bars are the ones `buildScore` has just made,
+ * and copying every head once for each thing it might carry was a fifth of the
+ * time a score took to work out. The marks go on in the order above, so a
+ * head's fields read the same whichever of them it has.
  */
-function attachEffects(
+function attachHeads(
   bars: StaffItem[][],
-  effects: ReadonlyMap<number, PitchEffect>
+  marks: {
+    effects?: ReadonlyMap<number, PitchEffect>;
+    graces?: ReadonlyMap<number, readonly number[]>;
+    accents?: ReadonlySet<number>;
+    echoes?: ReadonlySet<number>;
+    levels?: ReadonlyMap<number, number>;
+    across?: ReadonlyMap<number, 'start' | 'join'>;
+  }
 ): ScoreItem[][] {
-  if (effects.size === 0) return bars;
+  const effects = marks.effects?.size ? marks.effects : null;
+  const graces = marks.graces?.size ? marks.graces : null;
+  const accents = marks.accents?.size ? marks.accents : null;
+  const echoes = marks.echoes?.size ? marks.echoes : null;
+  const levels = marks.levels?.size ? marks.levels : null;
+  const across = marks.across?.size ? marks.across : null;
+  if (!effects && !graces && !accents && !echoes && !levels && !across) return bars;
   let active: EffectCarry | null = null;
-  return bars.map((items) =>
-    items.map((item): ScoreItem => {
-      if (item.midi !== null && !item.tieStop && effects.has(item.start)) {
-        const effect = effects.get(item.start)!;
-        active = drawnAlong(effect) ? { start: item.start, midi: item.midi, effect } : null;
-        return { ...item, effect };
+  for (const items of bars) {
+    for (const plain of items) {
+      const item = plain as ScoreItem;
+      const head = item.midi !== null && !item.tieStop;
+      if (effects) {
+        if (head && effects.has(item.start)) {
+          const effect = effects.get(item.start)!;
+          active = drawnAlong(effect) ? { start: item.start, midi: item.midi!, effect } : null;
+          item.effect = effect;
+        } else if (active && item.tieStop && item.midi === active.midi) {
+          item.carry = active;
+        } else if (!item.tieStop) {
+          active = null;
+        }
       }
-      if (active && item.tieStop && item.midi === active.midi) return { ...item, carry: active };
-      if (!item.tieStop) active = null;
-      return item;
-    })
-  );
+      if (!head) continue;
+      if (graces?.has(item.start)) item.grace = graces.get(item.start);
+      if (accents?.has(item.start)) item.accent = true;
+      if (echoes?.has(item.start)) item.echo = true;
+      if (levels?.has(item.start)) item.volume = levels.get(item.start);
+      if (across?.has(item.start)) item.across = across.get(item.start);
+    }
+  }
+  return bars;
+}
+
+/** Each note's own APU level by where it starts — what `attachHeads` puts on its head. */
+function levelsOf(notes: readonly { start: number; volume?: number }[]): Map<number, number> {
+  const levels = new Map<number, number>();
+  for (const note of notes) if (note.volume !== undefined) levels.set(note.start, note.volume);
+  return levels;
 }
 
 /** A noise hit: when, for how long, and which `$400E` period. */
@@ -899,26 +866,21 @@ export function buildScore(
       : new Set<number>();
     const across = crossBarRuns(notes, grid, accents);
     const heads = () => {
-      const written = attachCrossBar(
-        attachVolumes(
-          attachEcho(
-            attachAccents(attachGrace(attachEffects(barsOf(notes), effects), notes), accents),
-            new Set(notes.filter((note) => note.echo).map((note) => note.start))
-          ),
-          notes
+      const written = attachHeads(barsOf(notes), {
+        effects,
+        graces: new Map(
+          notes.filter((note) => note.grace?.length).map((note) => [note.start, note.grace!])
         ),
-        across
-      );
+        accents,
+        echoes: new Set(notes.filter((note) => note.echo).map((note) => note.start)),
+        levels: levelsOf(notes),
+        across,
+      });
       if (!accentBeams) return written;
-      const levels = new Map(
-        notes
-          .filter((note): note is ScoreNote & { volume: number } => note.volume !== undefined)
-          .map((note) => [note.start, note.volume])
-      );
       return accentBeamGroups(
         written,
         { from: accentBeams.from + shift, to: accentBeams.to + shift },
-        levels
+        levelsOf(notes)
       );
     };
     if (kinds.length === 1) {
@@ -951,7 +913,7 @@ export function buildScore(
      * written as rest: tied on a percussion staff it reads as a roll, and as a
      * second head it reads as a second hit.
      */
-    const bars = attachVolumes(
+    const bars = attachHeads(
       barsOf(hits).map((items) =>
         items.map((item) =>
           item.tieStop
@@ -959,7 +921,7 @@ export function buildScore(
             : { ...item, tieStart: false }
         )
       ),
-      hits
+      { levels: levelsOf(hits) }
     );
     staves.push({ partId: DRUMS_PART, kind: 'percussion', bars });
   }

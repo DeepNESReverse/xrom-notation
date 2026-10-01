@@ -622,13 +622,41 @@ export function notationCost(
     while (left > 0) {
       const inBar = position % measureTicks;
       const chunk = Math.min(left, measureTicks - inBar);
-      const spelling = solve(inBar, chunk, measureTicks);
-      pieces += spelling.pieces.length + spelling.offGrid;
+      pieces += spellingCost(inBar, chunk, measureTicks);
       position += chunk;
       left -= chunk;
     }
   }
   return pieces;
+}
+
+/**
+ * `solve`'s heads plus off-grid heads for a run inside one bar, from a flat
+ * table per bar length. `voicePhase` asks this for every piece of every note,
+ * four times over, and a `Map` keyed by a number past 2^31 is the slow part of
+ * that — so whole-tick runs are looked up by index instead.
+ */
+const costTables = new Map<number, Int32Array>();
+
+function spellingCost(inBar: number, chunk: number, measureTicks: number): number {
+  if (!Number.isInteger(measureTicks) || !Number.isInteger(inBar) || !Number.isInteger(chunk) || inBar < 0) {
+    const spelling = solve(inBar, chunk, measureTicks);
+    return spelling.pieces.length + spelling.offGrid;
+  }
+  let table = costTables.get(measureTicks);
+  if (!table) {
+    table = new Int32Array(measureTicks * (measureTicks + 1));
+    costTables.set(measureTicks, table);
+  }
+  const index = inBar * (measureTicks + 1) + chunk;
+  let cost = table[index];
+  if (cost === 0) {
+    const spelling = solve(inBar, chunk, measureTicks);
+    // Stored one up, so 0 can mean "not worked out yet".
+    cost = spelling.pieces.length + spelling.offGrid + 1;
+    table[index] = cost;
+  }
+  return cost - 1;
 }
 
 /**
