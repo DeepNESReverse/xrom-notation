@@ -2,8 +2,8 @@
  * A track as a SCORE: each pitched channel on a grand staff, the noise channel
  * on a percussion staff, and the dynamics its volumes imply.
  *
- * Built on `@/utils/notation`, so a bar here is spelled exactly the way the
- * scrolling staff under a keyboard spells it — same bar line, same phase, same
+ * Built on `./notation`, so a bar here is spelled exactly the way a single
+ * scrolling staff spells it — same bar line, same phase, same
  * note values. What this file adds is the part a page of music needs and a
  * single strip does not: which of two staves a note goes on, and what the
  * volume column says in the words a player reads.
@@ -61,7 +61,7 @@ const BEAMED = new Set(['8', '16', '32', '64']);
  *  - a group that does go below E3 stays on the bass, E3s and all — bar 29's
  *    second beat, E3 G3 C3 E3…, which "would be ugly otherwise". Only its heads
  *    from middle C up cross to the treble, and the beam crosses with them — the
- *    piano's cross-staff writing, drawn by `drawSystem` as one beam between the
+ *    piano's cross-staff writing, drawn as one beam between the
  *    staves with no rest on either side. Bar 30's lone G5 among B2s is that case.
  *
  * Every rule tried per BAR before this failed on a bar of this music: a bar
@@ -224,9 +224,8 @@ export function dynamicMarks(
 }
 
 /**
- * Where each `$400E` period sits on the percussion staff — the SAME lines the
- * MusicXML export writes (`NOISE_STAFF` in `music/lib/musicxml.js`), high noise
- * at the top and low noise at the bottom, so the page and the download agree.
+ * Where each NES noise period (`$400E`, 0..15) sits on the percussion staff:
+ * high noise at the top and low noise at the bottom.
  */
 const NOISE_LINES = [
   'g/5',
@@ -250,7 +249,7 @@ const NOISE_LINES = [
 /**
  * The notehead: a cross for a closed or pedal hat, a circled cross for an open
  * one, a plain head for everything with a skin. The pieces are the ones
- * `NOISE_DRUM_KINDS` draws on the kit, and a test holds the two together.
+ * `@xromdev/drumroll` draws on its kit (`NOISE_DRUM_KINDS`).
  */
 const NOISE_HEADS = ['x', 'x', 'x', 'x', 'cx', 'cx', '', '', '', '', '', '', '', '', '', ''];
 
@@ -263,7 +262,7 @@ export function noiseKey(period: number): string {
 /** A pitched note, with the volume it starts at when the channel has one. */
 export interface ScoreNote extends TickNote {
   volume?: number;
-  /** The note's pitch curve — `[position 0..1, semitones]` — as the roll draws it. */
+  /** The note's pitch curve — `[position 0..1, semitones]` — as a piano roll draws it. */
   bend?: readonly (readonly [number, number])[];
   /** Grace notes in front of it, as MIDI numbers in the order they are played. */
   grace?: readonly number[];
@@ -301,7 +300,7 @@ export type PitchEffect =
       /**
        * The curve itself, `[position 0..1, semitones]`, kept for a vibrato wider than a semitone:
        * a wave glyph says nothing of a swing like Turbo Tunnel Race's, bar 31, a D6 going up four
-       * semitones and down two and a half, so the staff draws the curve as the roll does.
+       * semitones and down two and a half, so the staff draws the curve itself.
        */
       curve?: readonly (readonly [number, number])[];
     };
@@ -361,8 +360,8 @@ function turnsOf(values: readonly number[], turnMin = TURN_MIN): number {
  * vibrato, or nothing.
  *
  * Over the twenty tracks that is 33 slides (one to four semitones), 10 vibratos,
- * and the drifts left out — the same split `effects.js` in the music tooling
- * makes between `isSlide` and `isVibrato`.
+ * and the drifts left out — the same split the Battletoads music tooling
+ * makes between a slide and a vibrato.
  */
 export function pitchEffect(
   curve: readonly (readonly [number, number])[],
@@ -374,8 +373,8 @@ export function pitchEffect(
   if (peak < DRIFT_LIMIT) {
     /*
      * Under half a semitone a curve is not written — unless it SWINGS. Surf City wobbles a tenth of
-     * a semitone and Intermission a sixth, both audible and both drawn by the roll; wookie hole's
-     * and ragnarok's marks, which the music tool also calls vibrato, are one-way drifts at the end
+     * a semitone and Intermission a sixth, both audible; wookie hole's
+     * and ragnarok's marks, which a looser rule also calls vibrato, are one-way drifts at the end
      * of a two-tick note and stay unwritten. Turns tell the two apart, counted against the curve's
      * OWN depth: a fixed grain either misses a tenth-of-a-semitone swing or counts a drift's jitter.
      */
@@ -482,8 +481,8 @@ export type ScoreItem = StaffItem & {
   /** The note is an echo — see `ScoreNote.echo`. Its head is written in brackets. */
   echo?: boolean;
   /**
-   * The APU level the note STARTS at, 0..15, as the ROM holds it — printed under the head when a
-   * reader asks for it. The dynamics are a reading of these numbers in six steps, which is what a
+   * The APU level the note STARTS at, 0..15, as the ROM holds it — for a renderer to print under
+   * the head when asked. The dynamics are a reading of these numbers in six steps, which is what a
    * player needs; the number itself is what the cartridge says, and the two answer different
    * questions. Only on a head, and only where the channel has a volume at all: the triangle has
    * none, so its notes carry nothing.
@@ -514,7 +513,7 @@ export const ACCENT_STEP = 3;
  * while saying nothing a reader cannot see from the dynamics. What a reader
  * cannot see is a voice that leans between the beats: ragnarok's canyon, bar 25,
  * plays sixteenths at 9 9 7 7 4 7 4 7 4 2 7 7 4 7 4 9 — every beat of the bar
- * but the first is a 4, and the 7s fall in the gaps. On the page that is an even
+ * but the first is a 4, and the 7s fall in the gaps. On paper that is an even
  * run of sixteenths; in the ears it is a syncopation, and accents are what make
  * the two agree.
  *
@@ -795,12 +794,36 @@ export function barKeys(
 /** The part id the percussion staff carries. */
 export const DRUMS_PART = 'drums';
 
+/** How a score is barred and read — everything `buildScore` takes beyond the notes. */
+export interface ScoreOptions {
+  /** The tick the bar lines are counted from. Default 0. */
+  offset?: number;
+  /** Ticks in a bar: 64 is 4/4, 32 is 2/4. Default `MEASURE_TICKS`. */
+  measureTicks?: number;
+  /**
+   * Write the pickup as part of the opening bar rather than in a bar of its own.
+   *
+   * The music then starts on the score's first tick, and the opening bar is as
+   * much longer than the metre as the pickup is — one bar of 19/32 in front of
+   * Volkmire's Inferno Race's 2/4, instead of a bar of rests with the run in it.
+   */
+  mergePickup?: boolean;
+  /**
+   * The passage read by its accents: the only place accents are marked (`accentedStarts`), and
+   * where the beams follow them rather than the beat (`accentBeamGroups`). None given, no accents.
+   * In the PIECE's ticks, like everything a caller gives; `shift` moves it onto the staff's clock.
+   */
+  accentBeams?: { from: number; to: number };
+  /** Bars later in the piece with a length of their own — see `BarGrid`. */
+  oddBars?: readonly OddBar[];
+}
+
 /**
  * The whole score, worked out once.
  *
- * `offset` is the track's bar offset (`barOffset`) and `measureTicks` the length of
- * its bar, both shared with every other notation view on the page so they all
- * bar the music the same way.
+ * `options.offset` is the tick the bar lines are counted from and
+ * `options.measureTicks` the length of a bar; any other notation view of the
+ * same piece should use the same two, so they all bar the music the same way.
  */
 export function buildScore(
   parts: readonly {
@@ -811,24 +834,13 @@ export function buildScore(
   }[],
   drums: readonly ScoreHit[],
   totalTicks: number,
-  offset: number,
-  measureTicks = MEASURE_TICKS,
-  /**
-   * Write the pickup as part of the opening bar rather than in a bar of its own.
-   *
-   * The music then starts on the page's first tick, and the opening bar is as
-   * much longer than the metre as the pickup is — one bar of 19/32 in front of
-   * Volkmire's Inferno Race's 2/4, instead of a bar of rests with the run in it.
-   */
-  mergePickup = false,
-  /**
-   * The passage read by its accents: the only place accents are marked (`accentedStarts`), and
-   * where the beams follow them rather than the beat (`accentBeamGroups`). None given, no accents.
-   * In the PIECE's ticks, like everything a caller gives; `shift` moves it onto the staff's clock.
-   */
-  accentBeams?: { from: number; to: number },
-  /** Bars later in the piece with a length of their own — see `BarGrid`. */
-  oddBars: readonly OddBar[] = []
+  {
+    offset = 0,
+    measureTicks = MEASURE_TICKS,
+    mergePickup = false,
+    accentBeams,
+    oddBars = [],
+  }: ScoreOptions = {}
 ): ScoreModel {
   const { grid, shift } = barring(offset, measureTicks, mergePickup, oddBars);
   const end = totalTicks + shift;

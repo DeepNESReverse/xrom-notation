@@ -1,22 +1,20 @@
 /**
- * Engine ticks read as NOTATION: note values, dots, ties and bar lines.
+ * Ticks read as NOTATION: note values, dots, ties and bar lines.
  *
- * A port of `DisAssemble/Battletoads/music/lib/musicxml.js` into the app, and
- * the reason it is a port rather than an import is that the exporter is a Node
- * script in another tree. Keep the two in step — they must not disagree about
- * what a run of ticks is called, or the `.musicxml` a reader downloads will
- * spell a bar differently from the staff they were just looking at.
- *
- * Nothing here quantises, because nothing has to: one engine tick is exactly a
- * sixty-fourth note (a sixteenth of a quarter), so every note in the cartridge
- * already sits on the grid notation is written on. That is the whole reason a
- * staff is possible at all for this ROM — the usual failure of notation built
+ * Nothing here quantises, because nothing has to: one tick is exactly a
+ * sixty-fourth note (a sixteenth of a quarter), so every note given already
+ * sits on the grid notation is written on. That is what makes music read out
+ * of a game cartridge writable at all — the usual failure of notation built
  * from MIDI is a performance that lands a few milliseconds off the beat, and
- * there is no performance here, only the integers the driver counts.
+ * a sound driver gives no performance, only the integers it counts. Anything
+ * else has to be quantised to sixty-fourths before it comes here.
  *
- * Durations come out as VexFlow codes (`w h q 8 16 32 64`) rather than
- * MusicXML's words, since that is what reads this; the tables are the same
- * lengths in the same order.
+ * The rules were made on Battletoads (NES), whose driver counts in exactly
+ * these ticks, and checked by ear on its twenty tracks; the examples in these
+ * comments are the bars that decided them.
+ *
+ * Durations come out as VexFlow codes (`w h q 8 16 32 64`), pitches as VexFlow
+ * keys (`c#/4`) — the shortest names there are, and what a renderer reads.
  */
 
 /** Engine ticks in a quarter note. The driver's own grid, not a choice. */
@@ -29,8 +27,7 @@ export const BEATS_PER_MEASURE = 4;
  * Not a constant of the music: Volkmire's Inferno Race is in 2/4, and its
  * sections — the change to D major among them — start on odd multiples of half
  * a 4/4 bar, so no 64-tick bar line can hold them. So everything here takes the
- * bar length it is barring to, and `MEASURE_TICKS` is only the default. See
- * `METERS` in `MusicPlayer`, and keep `music/lib/musicxml.js` in step.
+ * bar length it is barring to, and `MEASURE_TICKS` is only the default.
  */
 export const MEASURE_TICKS = TICKS_PER_QUARTER * BEATS_PER_MEASURE;
 /** Quarters in a bar of `measureTicks` ticks. */
@@ -272,7 +269,7 @@ export interface StaffItem {
    * Still the same sounding note as the head before it / after it.
    *
    * A tie is the difference between one note and two, and one crossing a bar
-   * line is drawn as two half curves that meet at it — see `drawMeasure`.
+   * line is drawn as two half curves that meet at it.
    */
   tieStart: boolean;
   tieStop: boolean;
@@ -457,7 +454,8 @@ export function staffMeasures(
   // `staffItems` hands the ribbon over in order, and then each bar is the next
   // run of it: one walk instead of a filter over the whole piece per bar.
   let sorted = true;
-  for (let at = 1; at < items.length && sorted; at++) sorted = items[at - 1].start <= items[at].start;
+  for (let at = 1; at < items.length && sorted; at++)
+    sorted = items[at - 1].start <= items[at].start;
   let next = 0;
 
   for (let index = 0; index < count; index++) {
@@ -639,7 +637,12 @@ export function notationCost(
 const costTables = new Map<number, Int32Array>();
 
 function spellingCost(inBar: number, chunk: number, measureTicks: number): number {
-  if (!Number.isInteger(measureTicks) || !Number.isInteger(inBar) || !Number.isInteger(chunk) || inBar < 0) {
+  if (
+    !Number.isInteger(measureTicks) ||
+    !Number.isInteger(inBar) ||
+    !Number.isInteger(chunk) ||
+    inBar < 0
+  ) {
     const spelling = solve(inBar, chunk, measureTicks);
     return spelling.pieces.length + spelling.offGrid;
   }
@@ -672,7 +675,7 @@ function spellingCost(inBar: number, chunk: number, measureTicks: number): numbe
  *
  * On a staff, though, it is the difference between a quarter note and a chain
  * of tied scraps, so the notes are written on the beat and the delay is
- * STATED: `Staff` labels every voice it moved, and does not move the playhead.
+ * STATED: a staff should label every voice it moved, and not move its playhead.
  * Longer echoes (Surf City's six ticks) are past `MAX_PHASE` and are written as
  * they sound.
  */
@@ -702,7 +705,7 @@ export function voicePhase(
  * starts: ragnarok's canyon opens the noise channel with a one-tick hit on
  * tick 0 and then plays everything a tick late. Refusing the phase for the sake
  * of that sliver — which is what a guard in `voicePhase` once did — left every
- * drum on an odd tick, and each of those gave the page's formatter a column of
+ * drum on an odd tick, and each of those gave the formatter a column of
  * its own: a gap between the first two sixteenths of pulse 1 in every bar. So
  * the phase is taken, and what lands before tick 0 is cut off there.
  */
@@ -719,7 +722,7 @@ export function shiftNotes<T extends TickNote>(notes: readonly T[], by: number):
 /*
  * Where the bar line falls: at the track's FIRST TICK. There is no search.
  *
- * There used to be — `barOffset` tried all 64 bar lines and kept the one that
+ * There used to be — a search tried all 64 bar lines and kept the one that
  * wrote the music with the fewest heads, on the reasoning a transcriber uses by
  * ear. It is blind to exactly the mistake that matters: this music repeats in
  * whole-bar patterns on a sixteenth grid, so a bar line an eighth or two off
@@ -731,8 +734,7 @@ export function shiftNotes<T extends TickNote>(notes: readonly T[], by: number):
  *
  * Tick 0 is what the evidence says instead: every channel of a track starts
  * there, the repeat points sit on ticks 1..4 in most tracks, and the MusicXML
- * export has always barred from tick 0 — so the page and the download now
- * agree. A channel's own authored delay (at most `MAX_PHASE` ticks) is still
+ * export has always barred from tick 0, and the two agree. A channel's own authored delay (at most `MAX_PHASE` ticks) is still
  * taken out per voice by `voicePhase`.
  */
 

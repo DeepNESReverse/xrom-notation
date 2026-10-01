@@ -198,8 +198,7 @@ describe('effectsOf', () => {
         },
       ],
       [],
-      448,
-      0
+      448
     );
     const items = model.staves[0].bars.flat();
     const head = items.find((item) => item.effect);
@@ -421,8 +420,7 @@ describe('buildScore', () => {
         },
       ],
       [{ start: 0, ticks: 8, period: 15 }],
-      64,
-      0
+      64
     );
     expect(score.staves.map((stave) => `${stave.partId}:${stave.kind}`)).toEqual([
       'lead:treble',
@@ -443,13 +441,9 @@ describe('buildScore', () => {
   });
 
   it('bars a 2/4 track in half bars, every bar two beats', () => {
-    const score = buildScore(
-      [{ id: 'lead', notes: [{ start: 0, ticks: 64, midi: 72 }] }],
-      [],
-      64,
-      0,
-      32
-    );
+    const score = buildScore([{ id: 'lead', notes: [{ start: 0, ticks: 64, midi: 72 }] }], [], 64, {
+      measureTicks: 32,
+    });
     expect(score.grid.measureTicks).toBe(32);
     expect(score.barCount).toBe(2);
     for (const bar of score.staves[0].bars) {
@@ -463,7 +457,11 @@ describe('buildScore', () => {
       { start: 0, ticks: 10, midi: 66 },
       { start: 10, ticks: 60, midi: 54 },
     ];
-    const merged = buildScore([{ id: 'lead', notes }], [], 70, 6, 32, true);
+    const merged = buildScore([{ id: 'lead', notes }], [], 70, {
+      offset: 6,
+      measureTicks: 32,
+      mergePickup: true,
+    });
     expect(merged.shift).toBe(0);
     expect(merged.grid).toEqual({ measureTicks: 32, firstBarTicks: 38 });
     expect(merged.barCount).toBe(2);
@@ -472,13 +470,13 @@ describe('buildScore', () => {
     expect(bars[1].reduce((sum, item) => sum + item.ticks, 0)).toBe(32);
 
     // The ordinary reading of the same track pads a bar of rests in front instead.
-    const padded = buildScore([{ id: 'lead', notes }], [], 70, 6, 32);
+    const padded = buildScore([{ id: 'lead', notes }], [], 70, { offset: 6, measureTicks: 32 });
     expect(padded.shift).toBe(26);
     expect(padded.barCount).toBe(3);
   });
 
   it('writes a drum hit that crosses a bar line as one head, not two', () => {
-    const score = buildScore([], [{ start: 48, ticks: 32, period: 7 }], 96, 0);
+    const score = buildScore([], [{ start: 48, ticks: 32, period: 7 }], 96);
     const heads = score.staves[0].bars.flat().filter((item) => item.midi !== null);
     expect(heads).toHaveLength(1);
     expect(heads[0].tieStart || heads[0].tieStop).toBe(false);
@@ -488,8 +486,7 @@ describe('buildScore', () => {
     const score = buildScore(
       [{ id: 'lead', notes: [{ start: 0, ticks: 16, midi: 72, volume: 15 }] }],
       [],
-      64,
-      0
+      64
     );
     expect(score.dynamics.lead).toEqual([{ tick: score.shift, dynamic: 'ff' }]);
   });
@@ -504,8 +501,7 @@ describe('buildScore', () => {
         { start: 81, ticks: 16, period: 7 },
         { start: 97, ticks: 32, period: 7 },
       ],
-      128,
-      0
+      128
     );
     const items = score.staves[0].bars.flat();
     expect(items.every((item) => item.start % 16 === 0)).toBe(true);
@@ -530,8 +526,7 @@ describe('buildScore', () => {
         },
       ],
       [],
-      128,
-      0
+      128
     );
     const marked = score.staves[0].bars.flat().filter((item) => item.effect);
     expect(marked).toHaveLength(1);
@@ -551,8 +546,7 @@ describe('buildScore', () => {
         },
       ],
       [],
-      64,
-      0
+      64
     );
     expect(score.staves.map((stave) => stave.kind)).toEqual(['bass']);
     expect(score.staves[0].bars.flat().filter((item) => item.midi !== null)).toHaveLength(2);
@@ -573,8 +567,7 @@ describe('the ROM level on a head', () => {
       },
     ],
     [{ start: 0, ticks: 8, period: 15, volume: 9 }],
-    64,
-    0
+    64
   );
   const heads = (score.staves[0].voiceBars ?? score.staves[0].bars)
     .flat()
@@ -592,12 +585,7 @@ describe('the ROM level on a head', () => {
   it('carries a drum level too, and says nothing where a channel has no volume', () => {
     const drums = score.staves[score.staves.length - 1].bars.flat();
     expect(drums.find((item) => item.midi !== null)?.volume).toBe(9);
-    const quiet = buildScore(
-      [{ id: 'tri', notes: [{ start: 0, ticks: 64, midi: 48 }] }],
-      [],
-      64,
-      0
-    );
+    const quiet = buildScore([{ id: 'tri', notes: [{ start: 0, ticks: 64, midi: 48 }] }], [], 64);
     expect(quiet.staves[0].bars.flat().every((item) => item.volume === undefined)).toBe(true);
   });
 });
@@ -727,7 +715,7 @@ describe('buildScore phases', () => {
   it("records each part's delay taken out, so a page can compare the staff's clock with the piece's", () => {
     // Every note a tick late: the part's own delay, taken out on the staff.
     const late = Array.from({ length: 16 }, (_, i) => ({ start: 1 + i * 8, ticks: 8, midi: 60 }));
-    const model = buildScore([{ id: 'late', notes: late }], [], 129, 0);
+    const model = buildScore([{ id: 'late', notes: late }], [], 129);
     expect(model.phases.late).toBe(1);
   });
 });
@@ -747,12 +735,14 @@ describe('accents only where they were read', () => {
       .map((item) => item.start);
 
   it('marks none without a passage read by its accents', () => {
-    expect(accented(buildScore([{ id: 'p', notes: echo }], [], 128, 0))).toEqual([]);
+    expect(accented(buildScore([{ id: 'p', notes: echo }], [], 128))).toEqual([]);
   });
 
   it('marks them inside the passage and nowhere else', () => {
     const inside = accented(
-      buildScore([{ id: 'p', notes: echo }], [], 128, 0, undefined, false, { from: 64, to: 128 })
+      buildScore([{ id: 'p', notes: echo }], [], 128, {
+        accentBeams: { from: 64, to: 128 },
+      })
     );
     expect(inside.length).toBeGreaterThan(0);
     expect(inside.every((start) => start >= 64)).toBe(true);
