@@ -1,0 +1,36 @@
+{
+  "name": "@xromdev/notation",
+  "version": "0.1.0",
+  "description": "Notes in ticks, read as a score: note values, ties, tuplets, bar lines, key spelling, clefs, grand staff and dynamics — no DOM, no renderer.",
+  "license": "MIT",
+  "author": "Oleksandr Maksymov",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run typecheck && npm test"
+  },
+  "keywords": ["music-notation", "sheet-music", "score", "musicxml", "vexflow", "midi", "nes", "chiptune"],
+  "repository": { "type": "git", "url": "git+https://github.com/DeepNESReverse/xrom-notation.git" },
+  "homepage": "https://github.com/DeepNESReverse/xrom-notation#readme",
+  "bugs": { "url": "https://github.com/DeepNESReverse/xrom-notation/issues" },
+  "engines": { "node": ">=18" },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  },
+  "publishConfig": { "access": "public" }
+}
