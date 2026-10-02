@@ -40,7 +40,21 @@ export const beatsIn = (measureTicks: number): number => measureTicks / TICKS_PE
  * but an opening bar of 38 is no number of quarters — it is 19 thirty-seconds,
  * and 19/32 is what a reader is shown.
  */
-export function timeSignatureOf(measureTicks: number): { beats: number; beatValue: number } {
+export function timeSignatureOf(
+  measureTicks: number,
+  /**
+   * The note value a bar is counted in, when the reading names one: 2 writes a
+   * bar of 128 ticks as 4/2 rather than 8/4. Left out — or not dividing the bar,
+   * as an opening bar of its own length may not — it is chosen as below.
+   */
+  beatValue?: number
+): { beats: number; beatValue: number } {
+  if (beatValue) {
+    const beat = (TICKS_PER_QUARTER * 4) / beatValue;
+    if (Number.isInteger(beat) && measureTicks % beat === 0) {
+      return { beats: measureTicks / beat, beatValue };
+    }
+  }
   for (const beatValue of [4, 8, 16, 32, 64] as const) {
     const beat = (TICKS_PER_QUARTER * 4) / beatValue;
     if (measureTicks % beat === 0) return { beats: measureTicks / beat, beatValue };

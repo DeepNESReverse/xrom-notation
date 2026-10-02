@@ -18,6 +18,7 @@ import {
   staffKey,
   staffMeasures,
   staffRoom,
+  timeSignatureOf,
   tupletGroups,
   voicePhase,
   type TickNote,
@@ -477,5 +478,18 @@ describe('flats the key does not carry', () => {
     expect([61, 68, 66].map((midi) => staffKey(midi, key))).toEqual(['db/4', 'ab/4', 'f#/4']);
     expect(signatureName('F+Db+Ab')).toBe('F');
     expect(signatureName('Eb')).toBe('Eb');
+  });
+});
+
+describe('timeSignatureOf with a named beat', () => {
+  it('writes a bar of 128 ticks in halves when asked, and in quarters when not', () => {
+    expect(timeSignatureOf(128, 2)).toEqual({ beats: 4, beatValue: 2 });
+    expect(timeSignatureOf(128)).toEqual({ beats: 8, beatValue: 4 });
+  });
+
+  it('falls back when the named beat does not divide the bar', () => {
+    expect(timeSignatureOf(38, 2)).toEqual(timeSignatureOf(38));
+    expect(timeSignatureOf(64)).toEqual({ beats: 4, beatValue: 4 });
+    expect(timeSignatureOf(32)).toEqual({ beats: 2, beatValue: 4 });
   });
 });
