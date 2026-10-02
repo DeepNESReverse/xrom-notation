@@ -748,3 +748,21 @@ describe('accents only where they were read', () => {
     expect(inside.every((start) => start >= 64)).toBe(true);
   });
 });
+
+describe('a strike in front of a note', () => {
+  it('is not read as part of its vibrato', () => {
+    const wave = Array.from({ length: 40 }, (_, i): [number, number] => [0.1 + (i / 40) * 0.9, 0.7 * Math.sin(i)]);
+    const effect = pitchEffect([[0, 6], [0.02, 2], [0.04, -1], [0.06, 0], ...wave], 48);
+    expect(effect?.kind).toBe('vibrato');
+    expect(effect && 'depth' in effect && effect.depth).toBeLessThan(1);
+  });
+
+  it('is not written at all on a note that then holds its pitch', () => {
+    expect(pitchEffect([[0, 7], [0.06, 3], [0.12, 0], [1, 0]], 32)).toBeNull();
+    expect(pitchEffect([[0, -19], [0.06, 0], [1, 0]], 32)).toBeNull();
+  });
+
+  it('is still a slide when the pitch does not come back early', () => {
+    expect(pitchEffect([[0, 0], [1, 2]], 32)?.kind).toBe('slide');
+  });
+});

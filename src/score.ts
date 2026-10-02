@@ -363,10 +363,31 @@ function turnsOf(values: readonly number[], turnMin = TURN_MIN): number {
  * and the drifts left out — the same split the Battletoads music tooling
  * makes between a slide and a vibrato.
  */
+/** How far into a note a strike may reach and still be read as its attack, 0..1. */
+export const STRIKE_SHARE = 0.15;
+
+/**
+ * The curve without the strike it opens with, if it opens with one: a pitch
+ * away from the note at its first point that comes back to it within
+ * `STRIKE_SHARE` of the note. That is how a sound driver hits a note — a
+ * triangle bass kicked from an octave up, a frame of a deep thump — and it is
+ * timbre, not a movement of the pitch: Alien 3's vibrato on a long G3 read six
+ * semitones deep with the kick in front of it, and was drawn as a curve.
+ */
+function withoutStrike(
+  curve: readonly (readonly [number, number])[]
+): readonly (readonly [number, number])[] {
+  if (Math.abs(curve[0][1]) < DRIFT_LIMIT) return curve;
+  const back = curve.findIndex(([, semitones]) => Math.abs(semitones) < 0.05);
+  if (back <= 0 || curve[back][0] > STRIKE_SHARE) return curve;
+  return curve.slice(back);
+}
+
 export function pitchEffect(
-  curve: readonly (readonly [number, number])[],
+  whole: readonly (readonly [number, number])[],
   ticks: number
 ): PitchEffect | null {
+  const curve = whole.length >= 2 ? withoutStrike(whole) : whole;
   if (curve.length < 2) return null;
   const values = curve.map(([, semitones]) => semitones);
   const peak = Math.max(...values.map(Math.abs));
