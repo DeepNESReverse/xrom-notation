@@ -493,3 +493,12 @@ describe('timeSignatureOf with a named beat', () => {
     expect(timeSignatureOf(32)).toEqual({ beats: 2, beatValue: 4 });
   });
 });
+
+describe('all fifteen keys', () => {
+  it('knows seven sharps and seven flats', () => {
+    expect(keyOf('C#').letters).toEqual(['f', 'c', 'g', 'd', 'a', 'e', 'b']);
+    expect(keyOf('Cb').letters).toEqual(['b', 'e', 'a', 'd', 'g', 'c', 'f']);
+    // B3 is C-flat 4, in the octave above its B.
+    expect(staffKey(59, keyOf('Cb'))).toBe('cb/4');
+  });
+});

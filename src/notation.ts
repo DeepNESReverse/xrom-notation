@@ -562,12 +562,14 @@ const KEY_ALTERATIONS: Readonly<Record<string, number>> = {
   E: 4,
   B: 5,
   'F#': 6,
+  'C#': 7,
   F: -1,
   Bb: -2,
   Eb: -3,
   Ab: -4,
   Db: -5,
   Gb: -6,
+  Cb: -7,
 };
 
 /**
