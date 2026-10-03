@@ -751,18 +751,68 @@ describe('accents only where they were read', () => {
 
 describe('a strike in front of a note', () => {
   it('is not read as part of its vibrato', () => {
-    const wave = Array.from({ length: 40 }, (_, i): [number, number] => [0.1 + (i / 40) * 0.9, 0.7 * Math.sin(i)]);
+    const wave = Array.from({ length: 40 }, (_, i): [number, number] => [
+      0.1 + (i / 40) * 0.9,
+      0.7 * Math.sin(i),
+    ]);
     const effect = pitchEffect([[0, 6], [0.02, 2], [0.04, -1], [0.06, 0], ...wave], 48);
     expect(effect?.kind).toBe('vibrato');
     expect(effect && 'depth' in effect && effect.depth).toBeLessThan(1);
   });
 
   it('is not written at all on a note that then holds its pitch', () => {
-    expect(pitchEffect([[0, 7], [0.06, 3], [0.12, 0], [1, 0]], 32)).toBeNull();
-    expect(pitchEffect([[0, -19], [0.06, 0], [1, 0]], 32)).toBeNull();
+    expect(
+      pitchEffect(
+        [
+          [0, 7],
+          [0.06, 3],
+          [0.12, 0],
+          [1, 0],
+        ],
+        32
+      )
+    ).toBeNull();
+    expect(
+      pitchEffect(
+        [
+          [0, -19],
+          [0.06, 0],
+          [1, 0],
+        ],
+        32
+      )
+    ).toBeNull();
   });
 
   it('is still a slide when the pitch does not come back early', () => {
-    expect(pitchEffect([[0, 0], [1, 2]], 32)?.kind).toBe('slide');
+    expect(
+      pitchEffect(
+        [
+          [0, 0],
+          [1, 2],
+        ],
+        32
+      )?.kind
+    ).toBe('slide');
+  });
+});
+
+describe('staccato', () => {
+  it('puts the dot on the head of a note played short, and on no piece tied after it', () => {
+    const score = buildScore(
+      [
+        {
+          id: 'p',
+          notes: [
+            { start: 0, ticks: 8, midi: 60, staccato: true },
+            { start: 8, ticks: 8, midi: 62 },
+          ],
+        },
+      ],
+      [],
+      64
+    );
+    const heads = score.staves[0].bars.flat().filter((item) => item.midi !== null);
+    expect(heads.map((item) => !!item.staccato)).toEqual([true, false]);
   });
 });

@@ -268,6 +268,11 @@ export interface ScoreNote extends TickNote {
   grace?: readonly number[];
   /** A repeat of the note before, quieter — an echo, written in brackets (`echoNotes`). */
   echo?: boolean;
+  /**
+   * Played short: its `ticks` are the value it is WRITTEN as, and it sounds for
+   * less — a staccato dot over the head instead of a rest after it.
+   */
+  staccato?: boolean;
 }
 
 /** What a pitch curve is written as. `ticks` is the whole note's length, over which it moves. */
@@ -505,6 +510,8 @@ export type ScoreItem = StaffItem & {
   accent?: boolean;
   /** The note is an echo — see `ScoreNote.echo`. Its head is written in brackets. */
   echo?: boolean;
+  /** The note is played short — see `ScoreNote.staccato`. A dot over its head. */
+  staccato?: boolean;
   /**
    * The APU level the note STARTS at, 0..15, as the ROM holds it — for a renderer to print under
    * the head when asked. The dynamics are a reading of these numbers in six steps, which is what a
@@ -700,6 +707,7 @@ function attachHeads(
     echoes?: ReadonlySet<number>;
     levels?: ReadonlyMap<number, number>;
     across?: ReadonlyMap<number, 'start' | 'join'>;
+    staccatos?: ReadonlySet<number>;
   }
 ): ScoreItem[][] {
   const effects = marks.effects?.size ? marks.effects : null;
@@ -708,7 +716,8 @@ function attachHeads(
   const echoes = marks.echoes?.size ? marks.echoes : null;
   const levels = marks.levels?.size ? marks.levels : null;
   const across = marks.across?.size ? marks.across : null;
-  if (!effects && !graces && !accents && !echoes && !levels && !across) return bars;
+  const staccatos = marks.staccatos?.size ? marks.staccatos : null;
+  if (!effects && !graces && !accents && !echoes && !levels && !across && !staccatos) return bars;
   let active: EffectCarry | null = null;
   for (const items of bars) {
     for (const plain of items) {
@@ -731,6 +740,7 @@ function attachHeads(
       if (echoes?.has(item.start)) item.echo = true;
       if (levels?.has(item.start)) item.volume = levels.get(item.start);
       if (across?.has(item.start)) item.across = across.get(item.start);
+      if (staccatos?.has(item.start)) item.staccato = true;
     }
   }
   return bars;
@@ -912,6 +922,7 @@ export function buildScore(
         echoes: new Set(notes.filter((note) => note.echo).map((note) => note.start)),
         levels: levelsOf(notes),
         across,
+        staccatos: new Set(notes.filter((note) => note.staccato).map((note) => note.start)),
       });
       if (!accentBeams) return written;
       return accentBeamGroups(
