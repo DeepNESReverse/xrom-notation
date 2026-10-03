@@ -364,7 +364,11 @@ function turnsOf(values: readonly number[], turnMin = TURN_MIN): number {
  * makes between a slide and a vibrato.
  */
 /** How far into a note a strike may reach and still be read as its attack, 0..1. */
-export const STRIKE_SHARE = 0.15;
+/**
+ * Alien 3's kick takes three frames of a seventeen-frame bass note — 18% — and at 15% the
+ * vibrato after it was still read with the kick in it.
+ */
+export const STRIKE_SHARE = 0.25;
 
 /**
  * The curve without the strike it opens with, if it opens with one: a pitch
