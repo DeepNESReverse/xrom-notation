@@ -373,6 +373,151 @@ export function tupletGroups(
   return out;
 }
 
+/** Spans an exact tuplet may fill, in ticks: a sixteenth to a whole note. */
+const TUPLET_SPANS = [4, 8, 16, 32, 64];
+/** How many notes a tuplet may divide its span into — every count that is not a power of two. */
+const TUPLET_COUNTS = [3, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15];
+/** How close a start must be to a tuplet's grid, in ticks, to stand on it. */
+const ON_GRID = 1e-6;
+
+/** The notes a tuplet of `num` is written in the time of: the largest power of two below it. */
+export const tupletOccupied = (num: number): number => 2 ** Math.floor(Math.log2(num - 1e-9));
+
+/** One exact tuplet run: notes `from`..`to` (exclusive) of the ordered list, and its items. */
+interface TupletRun {
+  to: number;
+  start: number;
+  span: number;
+  items: StaffItem[];
+}
+
+const near = (value: number) => Math.abs(value - Math.round(value)) < ON_GRID;
+
+/**
+ * Tuplets of any count, read from notes whose starts and ends divide a written value exactly.
+ *
+ * A sound driver counts whole ticks, and its triplets are 10 + 11 + 11 (`tupletGroups`). Music from
+ * anywhere else can say what it means: five notes from 0 to 16, each 3.2 ticks — a quintuplet of
+ * sixteenths in a quarter. A run is read as a tuplet of `num` in the time of `tupletOccupied(num)`
+ * when every start and end in it falls on its grid of `span / num`, the run fills `span` from a
+ * point that span may start on, and at least one of its edges is off the grid of whole ticks — so a
+ * line of ordinary values is never re-read. Inside, notes may be any whole number of the grid's
+ * steps — a quarter and an eighth in an eighth triplet — and the steps no note takes are rests.
+ *
+ * Whole-tick music never has one: no span here divides by three, five or seven into whole ticks.
+ */
+function exactTuplets(notes: readonly TickNote[], grid: BarGrid): Map<number, TupletRun> {
+  const runs = new Map<number, TupletRun>();
+  for (let from = 0; from < notes.length; from++) {
+    const begin = notes[from].start;
+    const bar = barAt(grid, begin + ON_GRID);
+    const barStart = barStartOf(grid, bar);
+    const barEnd = barStart + barTicksOf(grid, bar);
+    let found: TupletRun | null = null;
+    for (const span of TUPLET_SPANS) {
+      if (found) break;
+      // On the grid the span itself keeps — a beat for anything a beat or longer.
+      const step = Math.min(span, TICKS_PER_QUARTER);
+      for (let start = Math.floor((begin - barStart) / step) * step + barStart; start <= begin + ON_GRID && !found; start += step) {
+        if (start + span > barEnd + ON_GRID) break;
+        for (const num of TUPLET_COUNTS) {
+          const unit = span / num;
+          const run: TickNote[] = [];
+          for (let j = from; j < notes.length && notes[j].start < start + span - ON_GRID; j++) run.push(notes[j]);
+          if (!run.length || Math.abs(run[0].start - begin) > ON_GRID) continue;
+          // An earlier note that reaches into the span leaves it no clean start.
+          if (from > 0 && notes[from - 1].start + notes[from - 1].ticks > start + ON_GRID) continue;
+          const steps = run.map((note) => [(note.start - start) / unit, (note.start + note.ticks - start) / unit]);
+          if (!steps.every(([a, b]) => near(a) && near(b) && b <= num + ON_GRID && a >= -ON_GRID)) continue;
+          const edges = run.flatMap((note) => [note.start, note.start + note.ticks]);
+          if (edges.every((edge) => near(edge))) continue;
+          // The pieces: notes and the steps between them, each a value one head writes.
+          const occupied = tupletOccupied(num);
+          const written = span / occupied;
+          const pieces: { from: number; length: number; midi: number | null; at?: number }[] = [];
+          let at = 0;
+          for (let k = 0; k < run.length; k++) {
+            const a = Math.round(steps[k][0]);
+            const b = Math.round(steps[k][1]);
+            if (a < at) break;
+            if (a > at) pieces.push({ from: at, length: a - at, midi: null });
+            pieces.push({ from: a, length: b - a, midi: run[k].midi, at: run[k].start });
+            at = b;
+          }
+          if (at < num) pieces.push({ from: at, length: num - at, midi: null });
+          const values = pieces.map((piece) =>
+            VALUES.find((value) => Math.abs(value.ticks - piece.length * written) < ON_GRID)
+          );
+          if (pieces.reduce((sum, piece) => sum + piece.length, 0) !== num || values.some((value) => !value)) continue;
+          // Each piece from where it starts — a note's own start, so its marks find it — to the next.
+          const starts = pieces.map((piece, index) =>
+            piece.at !== undefined ? piece.at : index === 0 ? start : start + Math.round(piece.from * unit * 1e9) / 1e9
+          );
+          const items = pieces.map((piece, index): StaffItem => {
+            const pieceStart = starts[index];
+            const pieceEnd = index + 1 < pieces.length ? starts[index + 1] : start + span;
+            return {
+              start: pieceStart,
+              ticks: pieceEnd - pieceStart,
+              midi: piece.midi,
+              duration: values[index]!.duration,
+              dots: values[index]!.dots,
+              tieStart: false,
+              tieStop: false,
+              tuplet: { num, occupied, first: index === 0, last: index === pieces.length - 1 },
+            };
+          });
+          found = { to: from + run.length, start, span, items };
+          break;
+        }
+      }
+    }
+    if (found) {
+      runs.set(from, found);
+      from = found.to - 1;
+    }
+  }
+  return runs;
+}
+
+/**
+ * The exact tuplets, a run on the same grid that carries on to the beat read as one: two
+ * sixteenth triplets that fill a quarter are a sextuplet, as a reader writes six in a beat. Not
+ * past the beat — twelve in a half is four triplets.
+ */
+function exactTupletsByBeat(notes: readonly TickNote[], grid: BarGrid): Map<number, TupletRun> {
+  const runs = exactTuplets(notes, grid);
+  const merged = new Map<number, TupletRun>();
+  const ordered = [...runs.entries()].sort((a, b) => a[0] - b[0]);
+  for (let i = 0; i < ordered.length; i++) {
+    const [from, run] = ordered[i];
+    const next = ordered[i + 1];
+    const num = run.items[0].tuplet!.num;
+    const double = num * 2;
+    if (
+      next &&
+      run.span * 2 <= TICKS_PER_QUARTER &&
+      (run.start - barStartOf(grid, barAt(grid, run.start + ON_GRID))) % (run.span * 2) === 0 &&
+      TUPLET_COUNTS.includes(double) &&
+      next[0] === run.to &&
+      Math.abs(next[1].start - (run.start + run.span)) < ON_GRID &&
+      next[1].span === run.span &&
+      next[1].items[0].tuplet!.num === num
+    ) {
+      const items = [...run.items, ...next[1].items].map((item, index, all) => ({
+        ...item,
+        tuplet: { num: double, occupied: tupletOccupied(double), first: index === 0, last: index === all.length - 1 },
+      }));
+      // The written value stays: the bracket counts the same steps, twice as many of them.
+      merged.set(from, { to: next[1].to, start: run.start, span: run.span * 2, items });
+      i++;
+      continue;
+    }
+    merged.set(from, run);
+  }
+  return merged;
+}
+
 export function staffItems(
   notes: readonly TickNote[],
   totalTicks: number,
@@ -417,8 +562,22 @@ export function staffItems(
   };
 
   const tuplets = tupletGroups(ordered, grid);
+  // Exact tuplets only where some note is off the whole-tick grid: whole-tick music has none.
+  const exact = ordered.some((note) => !Number.isInteger(note.start) || !Number.isInteger(note.ticks))
+    ? exactTupletsByBeat(ordered, grid)
+    : null;
+  let skipTo = -1;
 
   ordered.forEach((note, index) => {
+    if (index < skipTo) return;
+    const run = exact?.get(index);
+    if (run) {
+      if (run.start > cursor) push(cursor, run.start - cursor, null);
+      items.push(...run.items);
+      cursor = run.start + run.span;
+      skipTo = run.to;
+      return;
+    }
     if (note.start > cursor) push(cursor, note.start - cursor, null);
     cursor = Math.max(cursor, note.start);
 
@@ -485,7 +644,8 @@ export function staffMeasures(
     }
     const filled = inBar.reduce((sum, item) => sum + item.ticks, 0);
 
-    if (filled < barTicks) {
+    // Filled to within a hair is full: a tuplet's steps are sums of fractions.
+    if (barTicks - filled > ON_GRID) {
       let at = start + filled;
       for (const piece of decompose(filled, barTicks - filled, barTicks)) {
         inBar.push({
@@ -693,6 +853,8 @@ export function notationCost(
 ): number {
   let pieces = 0;
   for (const note of notes) {
+    // A tuplet's note is off the tick grid; the phase is read from the rest.
+    if (!Number.isInteger(note.start) || !Number.isInteger(note.ticks)) continue;
     // + 2 bars so a shift past the first note still lands on a positive tick.
     // Measured on the plain grid: what it weighs is the phase of a voice
     // against the beat, which the opening bar's own length does not change.

@@ -517,3 +517,72 @@ describe('chordKeys', () => {
     expect(chordKeys([61], keyOf('C'))).toEqual(['c#/4']);
   });
 });
+
+describe('exact tuplets', () => {
+  const tupletOf = (items: { tuplet?: { num: number; occupied: number } }[]) =>
+    items.filter((item) => item.tuplet).map((item) => `${item.tuplet!.num}:${item.tuplet!.occupied}`);
+  const fifth = 16 / 5;
+
+  it('reads five sixteenths in a quarter as a quintuplet', () => {
+    const notes = Array.from({ length: 5 }, (_, i) => ({ start: i * fifth, ticks: fifth, midi: 60 + i }));
+    const items = staffItems([...notes, { start: 16, ticks: 48, midi: 72 }], 64);
+    expect(tupletOf(items)).toEqual(['5:4', '5:4', '5:4', '5:4', '5:4']);
+    expect(items.slice(0, 5).map((item) => item.duration)).toEqual(['16', '16', '16', '16', '16']);
+    expect(items[5]).toMatchObject({ start: 16, duration: 'h', dots: 1 });
+  });
+
+  it('reads seven in the time of four, nine in the time of eight, and six in the time of four', () => {
+    for (const [num, span, occupied, duration] of [
+      [7, 16, 4, '16'],
+      [9, 32, 8, '16'],
+      [6, 16, 4, '16'],
+      [11, 32, 8, '16'],
+      [13, 64, 8, '8'],
+    ] as const) {
+      const unit = span / num;
+      const notes = Array.from({ length: num }, (_, i) => ({ start: i * unit, ticks: unit, midi: 60 }));
+      const items = staffItems(notes, 64);
+      expect(tupletOf(items).length).toBe(num);
+      expect(items[0].tuplet).toMatchObject({ num, occupied, first: true });
+      expect(items[num - 1].tuplet).toMatchObject({ last: true });
+      expect(items[0].duration).toBe(duration);
+    }
+  });
+
+  it('takes mixed values and rests inside one bracket: a quarter and an eighth in an eighth triplet', () => {
+    const third = 16 / 3;
+    const items = staffItems(
+      [
+        { start: 0, ticks: 2 * third, midi: 67 },
+        { start: 2 * third, ticks: third, midi: 69 },
+        { start: 16 + third, ticks: 2 * third, midi: 71 },
+      ],
+      32
+    );
+    expect(items.map((item) => [item.midi, item.duration, item.tuplet?.num ?? 0])).toEqual([
+      [67, 'q', 3],
+      [69, '8', 3],
+      [null, '8', 3],
+      [71, 'q', 3],
+    ]);
+  });
+
+  it('fills the bar to its line after a tuplet', () => {
+    const notes = Array.from({ length: 5 }, (_, i) => ({ start: i * fifth, ticks: fifth, midi: 60 }));
+    const bars = staffMeasures(staffItems(notes, 64), 64);
+    expect(bars).toHaveLength(1);
+    expect(bars[0].items.reduce((sum, item) => sum + item.ticks, 0)).toBeCloseTo(64, 9);
+  });
+
+  it('leaves whole-tick music as it was — a driver triplet is still 10 + 11 + 11', () => {
+    const items = staffItems(
+      [
+        { start: 0, ticks: 10, midi: 60 },
+        { start: 10, ticks: 11, midi: 62 },
+        { start: 21, ticks: 11, midi: 64 },
+      ],
+      32
+    );
+    expect(tupletOf(items)).toEqual(['3:2', '3:2', '3:2']);
+  });
+});
