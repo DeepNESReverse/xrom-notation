@@ -586,3 +586,39 @@ describe('exact tuplets', () => {
     expect(tupletOf(items)).toEqual(['3:2', '3:2', '3:2']);
   });
 });
+
+describe('which bracket', () => {
+  const third = 16 / 3;
+  it('puts one bracket over a beat with a rest in its middle, not two over its halves', () => {
+    const items = staffItems(
+      [
+        { start: 0, ticks: third, midi: 71 },
+        { start: 2 * third, ticks: third, midi: 72 },
+      ],
+      16
+    );
+    expect(items.map((item) => [item.midi, item.duration, item.tuplet?.num ?? 0])).toEqual([
+      [71, '8', 3],
+      [null, '8', 3],
+      [72, '8', 3],
+    ]);
+  });
+
+  it('keeps a sixteenth triplet to the half of the beat it is in', () => {
+    const items = staffItems(
+      [
+        { start: 0, ticks: 8 / 3, midi: 60 },
+        { start: 8 / 3, ticks: 8 / 3, midi: 62 },
+        { start: 16 / 3, ticks: 8 / 3, midi: 64 },
+        { start: 8, ticks: 8, midi: 65 },
+      ],
+      16
+    );
+    expect(items.map((item) => [item.midi, item.duration, item.tuplet ? `${item.tuplet.num}:${item.tuplet.occupied}` : ''])).toEqual([
+      [60, '16', '3:2'],
+      [62, '16', '3:2'],
+      [64, '16', '3:2'],
+      [65, '8', ''],
+    ]);
+  });
+});

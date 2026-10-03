@@ -373,8 +373,12 @@ export function tupletGroups(
   return out;
 }
 
-/** Spans an exact tuplet may fill, in ticks: a sixteenth to a whole note. */
-const TUPLET_SPANS = [4, 8, 16, 32, 64];
+/**
+ * Spans an exact tuplet may fill, in ticks, in the order they are tried: the beat first, then
+ * shorter, then longer. A bracket over a beat reads better than two over its halves — unless one
+ * half needs none (`plainHalf`).
+ */
+const TUPLET_SPANS = [16, 8, 4, 32, 64];
 /** How many notes a tuplet may divide its span into — every count that is not a power of two. */
 const TUPLET_COUNTS = [3, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15];
 /** How close a start must be to a tuplet's grid, in ticks, to stand on it. */
@@ -431,6 +435,19 @@ function exactTuplets(notes: readonly TickNote[], grid: BarGrid): Map<number, Tu
           if (!steps.every(([a, b]) => near(a) && near(b) && b <= num + ON_GRID && a >= -ON_GRID)) continue;
           const edges = run.flatMap((note) => [note.start, note.start + note.ticks]);
           if (edges.every((edge) => near(edge))) continue;
+          // A half of the span that ordinary values write on their own wants a shorter bracket: a
+          // sixteenth triplet and an eighth are a triplet over the first half, not a sextuplet.
+          const plainHalf = (lo: number, hi: number) =>
+            run
+              .filter((note) => note.start < hi - ON_GRID && note.start + note.ticks > lo + ON_GRID)
+              .every(
+                (note) =>
+                  note.start >= lo - ON_GRID &&
+                  note.start + note.ticks <= hi + ON_GRID &&
+                  near(note.start) &&
+                  near(note.start + note.ticks)
+              );
+          if (span > 4 && (plainHalf(start, start + span / 2) || plainHalf(start + span / 2, start + span))) continue;
           // The pieces: notes and the steps between them, each a value one head writes.
           const occupied = tupletOccupied(num);
           const written = span / occupied;
