@@ -860,3 +860,16 @@ describe('notes struck together in a part', () => {
     ]);
   });
 });
+
+describe('alignVoices: false', () => {
+  it('leaves a voice where it is', () => {
+    const late = [
+      { start: 1, ticks: 16, midi: 60 },
+      { start: 17, ticks: 16, midi: 62 },
+      { start: 33, ticks: 16, midi: 64 },
+      { start: 49, ticks: 15, midi: 65 },
+    ];
+    expect(buildScore([{ id: 'p', notes: late }], [], 64).phases.p).toBe(1);
+    expect(buildScore([{ id: 'p', notes: late }], [], 64, { alignVoices: false }).phases.p).toBe(0);
+  });
+});

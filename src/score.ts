@@ -862,6 +862,13 @@ export interface ScoreOptions {
   accentBeams?: { from: number; to: number };
   /** Bars later in the piece with a length of their own — see `BarGrid`. */
   oddBars?: readonly OddBar[];
+  /**
+   * Take a part's own delay of up to `MAX_PHASE` ticks out (`voicePhase`). Default true: a sound
+   * driver delays a channel a tick or two on purpose, and the staff writes it on the beat. Music
+   * that is already on its beat — a MIDI file — wants it off, or a voice is moved off the beat it
+   * keeps.
+   */
+  alignVoices?: boolean;
 }
 
 /**
@@ -886,6 +893,7 @@ export function buildScore(
     mergePickup = false,
     accentBeams,
     oddBars = [],
+    alignVoices = true,
   }: ScoreOptions = {}
 ): ScoreModel {
   const { grid, shift } = barring(offset, measureTicks, mergePickup, oddBars);
@@ -895,7 +903,7 @@ export function buildScore(
     staffMeasures(staffItems(notes, end, grid), end, grid).map((bar) => bar.items);
   const phases: Record<string, number> = {};
   const moved = <T extends TickNote>(notes: readonly T[], id?: string): T[] => {
-    const phase = notes.length > 0 ? voicePhase(notes, offset, measureTicks) : 0;
+    const phase = alignVoices && notes.length > 0 ? voicePhase(notes, offset, measureTicks) : 0;
     if (id !== undefined) phases[id] = phase;
     return shiftNotes(notes, shift - phase);
   };
