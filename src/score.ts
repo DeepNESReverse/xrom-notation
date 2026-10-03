@@ -513,8 +513,9 @@ export type ScoreItem = StaffItem & {
   /** The note is played short — see `ScoreNote.staccato`. A dot over its head. */
   staccato?: boolean;
   /**
-   * On a percussion staff: the other drums struck at the same moment, by period — heads on the
-   * same stem. A cartridge plays its noise channel and its DMC samples at once, a hat over a kick.
+   * The other heads on this one's stem, struck at the same moment: on a percussion staff, drums by
+   * period — a cartridge plays its noise channel and its DMC samples at once, a hat over a kick; on
+   * a pitched staff, notes by MIDI number — a violin's double and triple stops.
    */
   chord?: readonly number[];
   /**
@@ -903,8 +904,35 @@ export function buildScore(
   const dynamics: Record<string, DynamicMark[]> = {};
 
   for (const part of parts) {
-    const notes = moved(part.notes, part.id);
-    const kinds = part.staves ? [...part.staves] : partStaves(notes);
+    /*
+     * Notes struck together are one head with a chord on its stem: the highest — the line a
+     * reader follows — is the head the rhythm, the staff and the marks are read from, and it
+     * holds as long as the longest of them. A part with one note at a time is untouched.
+     */
+    const together = new Map<number, ScoreNote[]>();
+    for (const note of part.notes) together.set(note.start, [...(together.get(note.start) ?? []), note]);
+    const groups = [...together.values()];
+    const leads = groups.map((group) =>
+      group.length === 1
+        ? group[0]
+        : {
+            ...group.reduce((top, note) => (note.midi > top.midi ? note : top)),
+            ticks: Math.max(...group.map((note) => note.ticks)),
+          }
+    );
+    const notes = moved(leads, part.id);
+    const pitchChords = new Map<number, number[]>();
+    groups.forEach((group, index) => {
+      if (group.length < 2) return;
+      const others = [...new Set(group.map((note) => note.midi))]
+        .filter((midi) => midi !== leads[index].midi)
+        .sort((a, b) => a - b);
+      if (others.length) pitchChords.set(notes[index].start, others);
+    });
+    const range = pitchChords.size
+      ? [...notes, ...[...pitchChords.values()].flat().map((midi) => ({ midi }))]
+      : notes;
+    const kinds = part.staves ? [...part.staves] : partStaves(range);
     // Read over the whole part: the note after a slide may be on the other staff.
     const effects = effectsOf(notes);
     /*
@@ -933,6 +961,7 @@ export function buildScore(
         levels: levelsOf(notes),
         across,
         staccatos: new Set(notes.filter((note) => note.staccato).map((note) => note.start)),
+        chords: pitchChords,
       });
       if (!accentBeams) return written;
       return accentBeamGroups(

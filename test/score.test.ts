@@ -835,3 +835,28 @@ describe('drums at the same moment', () => {
     ]);
   });
 });
+
+describe('notes struck together in a part', () => {
+  it('are one head with a chord, read from the highest, as long as the longest', () => {
+    const score = buildScore(
+      [
+        {
+          id: 'violin',
+          notes: [
+            { start: 0, ticks: 16, midi: 63 },
+            { start: 0, ticks: 16, midi: 66 },
+            { start: 0, ticks: 8, midi: 68 },
+            { start: 16, ticks: 16, midi: 70 },
+          ],
+        },
+      ],
+      [],
+      32
+    );
+    const heads = score.staves[0].bars.flat().filter((item) => item.midi !== null);
+    expect(heads.map((item) => [item.start, item.midi, item.ticks, item.chord ?? []])).toEqual([
+      [0, 68, 16, [63, 66]],
+      [16, 70, 16, []],
+    ]);
+  });
+});
