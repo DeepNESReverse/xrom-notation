@@ -7,6 +7,7 @@ import {
   barTicksOf,
   MEASURE_TICKS,
   chooseClef,
+  chordKeys,
   clefPlan,
   decompose,
   keyOf,
@@ -500,5 +501,19 @@ describe('all fifteen keys', () => {
     expect(keyOf('Cb').letters).toEqual(['b', 'e', 'a', 'd', 'g', 'c', 'f']);
     // B3 is C-flat 4, in the octave above its B.
     expect(staffKey(59, keyOf('Cb'))).toBe('cb/4');
+  });
+});
+
+describe('chordKeys', () => {
+  it('spells a chord by its intervals: E-flat with G-flat, not F-sharp', () => {
+    const eb = keyOf('Eb');
+    expect(staffKey(66, eb)).toBe('f#/4');
+    expect(chordKeys([63, 66], eb)).toEqual(['eb/4', 'gb/4']);
+    expect(chordKeys([63, 66, 68], eb)).toEqual(['eb/4', 'gb/4', 'ab/4']);
+  });
+
+  it('keeps a chord the key already spells, and a single note as staffKey has it', () => {
+    expect(chordKeys([62, 66, 69], keyOf('D'))).toEqual(['d/4', 'f#/4', 'a/4']);
+    expect(chordKeys([61], keyOf('C'))).toEqual(['c#/4']);
   });
 });

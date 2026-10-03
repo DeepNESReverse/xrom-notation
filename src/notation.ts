@@ -542,6 +542,71 @@ export function staffKey(midi: number, key?: KeySignature): string {
   return flat ? `${FLAT_STEPS[index]}b/${octave}` : `${STEPS[index]}#/${octave}`;
 }
 
+/** Letters by diatonic step, and the steps an interval of n semitones spans when spelt plainly. */
+const LETTER_STEP: Readonly<Record<string, number>> = { c: 0, d: 1, e: 2, f: 3, g: 4, a: 5, b: 6 };
+const PLAIN_STEPS = [0, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 6];
+
+/** The other spelling of a black key: `c#/4` ↔ `db/4`. Null for a white key. */
+function otherSpelling(midi: number, spelt: string): string | null {
+  const index = ((midi % 12) + 12) % 12;
+  if (!BLACK[index]) return null;
+  const octave = Math.floor(midi / 12) - 1;
+  return spelt.includes('#') ? `${FLAT_STEPS[index]}b/${octave}` : `${STEPS[index]}#/${octave}`;
+}
+
+/** Diatonic position of a VexFlow key: letter step plus seven a an octave. */
+const stepOf = (key: string) => {
+  const [name, octave] = key.split('/');
+  return LETTER_STEP[name[0]] + 7 * Number(octave);
+};
+
+/**
+ * The heads of a chord as VexFlow keys, each black key spelt so the chord reads as intervals do.
+ *
+ * `staffKey` spells one note against the key, and for a line that is right: Volkmire's Inferno, in
+ * E-flat, climbs F to F-sharp. A chord is read the other way — by the intervals between its heads.
+ * Paganini's Caprice 17, in E-flat, strikes E-flat with G-flat: written E-flat and F-sharp, that is
+ * an augmented second where a minor third sounds. So for the black keys of a chord both spellings
+ * are tried, and the one whose intervals span the letters their size asks for wins — a third across
+ * three letters, a second across two; where the intervals cannot tell, `staffKey` decides. In the
+ * order given.
+ */
+export function chordKeys(midis: readonly number[], key?: KeySignature): string[] {
+  const plain = midis.map((midi) => staffKey(midi, key));
+  const choices = midis.map((midi, i) => {
+    const other = otherSpelling(midi, plain[i]);
+    return other ? [plain[i], other] : [plain[i]];
+  });
+  const cost = (keys: readonly string[]) => {
+    let wrong = 0;
+    for (let i = 0; i < keys.length; i++) {
+      for (let j = i + 1; j < keys.length; j++) {
+        const [lo, hi] = midis[i] <= midis[j] ? [i, j] : [j, i];
+        const semitones = midis[hi] - midis[lo];
+        const steps = stepOf(keys[hi]) - stepOf(keys[lo]);
+        const expected = PLAIN_STEPS[semitones % 12] + 7 * Math.floor(semitones / 12);
+        if (steps !== expected) wrong++;
+      }
+    }
+    return wrong;
+  };
+  let best = plain;
+  let bestCost = cost(plain);
+  const walk = (at: number, picked: string[]) => {
+    if (at === choices.length) {
+      const c = cost(picked);
+      if (c < bestCost) {
+        bestCost = c;
+        best = picked.slice();
+      }
+      return;
+    }
+    for (const option of choices[at]) walk(at + 1, [...picked, option]);
+  };
+  if (choices.some((options) => options.length > 1)) walk(0, []);
+  return best;
+}
+
 /** What a key signature does: which letters it alters, and which way. */
 export interface KeySignature {
   /** `#` for a sharp key, `b` for a flat one. C has neither and no letters. */
