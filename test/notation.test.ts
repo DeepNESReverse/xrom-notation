@@ -549,6 +549,16 @@ describe('exact tuplets', () => {
     }
   });
 
+  it("splits a step inside the bracket: Alien 3's 9:8 opens with four sixty-fourths", () => {
+    const cell = 16 / 18;
+    const at = [0, 1, 2, 3, 4, 6, 8, 10, 12, 14, 16];
+    const notes = at.map((c, i) => ({ start: c * cell, ticks: ((at[i + 1] ?? 18) - c) * cell, midi: 85 - i }));
+    const items = staffItems([...notes, { start: 16, ticks: 48, midi: 60 }], 64);
+    expect(tupletOf(items)).toEqual(Array(11).fill('9:8'));
+    expect(items.slice(0, 11).map((item) => item.duration)).toEqual([...Array(4).fill('64'), ...Array(7).fill('32')]);
+    expect(items[11]).toMatchObject({ start: 16, duration: 'h', dots: 1 });
+  });
+
   it('takes mixed values and rests inside one bracket: a quarter and an eighth in an eighth triplet', () => {
     const third = 16 / 3;
     const items = staffItems(
