@@ -513,6 +513,11 @@ export type ScoreItem = StaffItem & {
   /** The note is played short — see `ScoreNote.staccato`. A dot over its head. */
   staccato?: boolean;
   /**
+   * On a percussion staff: the other drums struck at the same moment, by period — heads on the
+   * same stem. A cartridge plays its noise channel and its DMC samples at once, a hat over a kick.
+   */
+  chord?: readonly number[];
+  /**
    * The APU level the note STARTS at, 0..15, as the ROM holds it — for a renderer to print under
    * the head when asked. The dynamics are a reading of these numbers in six steps, which is what a
    * player needs; the number itself is what the cartridge says, and the two answer different
@@ -708,6 +713,7 @@ function attachHeads(
     levels?: ReadonlyMap<number, number>;
     across?: ReadonlyMap<number, 'start' | 'join'>;
     staccatos?: ReadonlySet<number>;
+    chords?: ReadonlyMap<number, readonly number[]>;
   }
 ): ScoreItem[][] {
   const effects = marks.effects?.size ? marks.effects : null;
@@ -717,7 +723,10 @@ function attachHeads(
   const levels = marks.levels?.size ? marks.levels : null;
   const across = marks.across?.size ? marks.across : null;
   const staccatos = marks.staccatos?.size ? marks.staccatos : null;
-  if (!effects && !graces && !accents && !echoes && !levels && !across && !staccatos) return bars;
+  const chords = marks.chords?.size ? marks.chords : null;
+  if (!effects && !graces && !accents && !echoes && !levels && !across && !staccatos && !chords) {
+    return bars;
+  }
   let active: EffectCarry | null = null;
   for (const items of bars) {
     for (const plain of items) {
@@ -741,6 +750,7 @@ function attachHeads(
       if (levels?.has(item.start)) item.volume = levels.get(item.start);
       if (across?.has(item.start)) item.across = across.get(item.start);
       if (staccatos?.has(item.start)) item.staccato = true;
+      if (chords?.has(item.start)) item.chord = chords.get(item.start);
     }
   }
   return bars;
@@ -947,14 +957,36 @@ export function buildScore(
   }
 
   if (drums.length > 0) {
+    /*
+     * Hits at the same moment are one chord: the longest is the head the staff's rhythm is
+     * written from, the others stand on its stem. A staff of one voice wrote them one after
+     * another, and every hat over a kick pushed the rest of the bar a value late.
+     */
+    const groups = new Map<number, ScoreHit[]>();
+    for (const hit of drums) groups.set(hit.start, [...(groups.get(hit.start) ?? []), hit]);
+    const leads = [...groups.values()].map((group) =>
+      group.reduce((longest, hit) => (hit.ticks > longest.ticks ? hit : longest))
+    );
+    const others = [...groups.values()].map((group, index) => [
+      ...new Set(
+        group
+          .filter((hit) => hit !== leads[index])
+          .map((hit) => hit.period & 0x0f)
+          .filter((period) => period !== (leads[index].period & 0x0f))
+      ),
+    ]);
     const hits = moved(
-      drums.map((hit) => ({
+      leads.map((hit) => ({
         start: hit.start,
         ticks: hit.ticks,
         midi: hit.period & 0x0f,
         volume: hit.volume,
       }))
     );
+    const chords = new Map<number, number[]>();
+    hits.forEach((hit, index) => {
+      if (others[index]?.length) chords.set(hit.start, others[index]);
+    });
     /*
      * A drum is struck once. What is left of its slot after the first head —
      * the rest of a long value, or the part carried over a bar line — is
@@ -969,7 +1001,7 @@ export function buildScore(
             : { ...item, tieStart: false }
         )
       ),
-      { levels: levelsOf(hits) }
+      { levels: levelsOf(hits), chords }
     );
     staves.push({ partId: DRUMS_PART, kind: 'percussion', bars });
   }

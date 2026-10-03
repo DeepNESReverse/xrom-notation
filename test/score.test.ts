@@ -816,3 +816,22 @@ describe('staccato', () => {
     expect(heads.map((item) => !!item.staccato)).toEqual([true, false]);
   });
 });
+
+describe('drums at the same moment', () => {
+  it('are one chord, and the bar keeps its rhythm', () => {
+    const score = buildScore(
+      [],
+      [
+        { start: 0, ticks: 8, period: 1 },
+        { start: 0, ticks: 4, period: 15 },
+        { start: 8, ticks: 8, period: 7 },
+      ],
+      64
+    );
+    const heads = score.staves[0].bars.flat().filter((item) => item.midi !== null);
+    expect(heads.map((item) => [item.start, item.midi, item.chord ?? []])).toEqual([
+      [0, 1, [15]],
+      [8, 7, []],
+    ]);
+  });
+});
