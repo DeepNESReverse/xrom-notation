@@ -191,9 +191,101 @@ export function dynamicOf(volume: number): Dynamic {
 /** A change of level closer than this, in ticks, is folded into the mark before it. A quarter note. */
 export const DYNAMIC_HOLD = 16;
 
+/** The words a mark can carry after its level: a figure's shape, or "the same again". */
+export type DynamicWords = 'dim.' | 'cresc.' | 'sim.';
+
 export interface DynamicMark {
   tick: number;
   dynamic: Dynamic;
+  /**
+   * How the figure goes from here: `dim.` and `cresc.` are a hairpin after the
+   * level, `sim.` is the word alone — the level is the figure's own — with a
+   * dashed line for as long as it holds.
+   */
+  words?: DynamicWords;
+  /** With `words`: the tick of the last note the hairpin or the `sim.` covers. */
+  until?: number; /**
+   * A hairpin from a level the reader is already at: the hairpin alone, no
+   * letter — ragnarok's 7 7 4 2, an mp going on from the mp before it.
+   */
+  bare?: boolean;
+}
+
+/** Onset to onset, notes closer than this can make one shaped figure. An eighth note. */
+export const FIGURE_GAP = 8;
+
+/**
+ * And no closer than this, a sixteenth. Faster is one note's envelope struck
+ * again and again — Arctic Caverns' 8 4 2 1 in thirty-seconds on one pitch, an
+ * echo — not a figure a player shapes.
+ */
+export const FIGURE_STEP = 4;
+
+/** A run of notes whose level only falls, or only rises: `[from, to]` are indices, inclusive. */
+export interface ShapedFigure {
+  from: number;
+  to: number;
+  words: 'dim.' | 'cresc.';
+}
+
+/**
+ * Runs of at least three notes, each `FIGURE_STEP` to `FIGURE_GAP` after the one before, whose
+ * level moves one way every step and by two or more in all — the 4 3 2 1 under
+ * every beat of a fading figure. The six steps of `dynamicOf` cannot show that:
+ * 4 and 3 are both p, and the hold folds the pp of 2 and 1 back into it.
+ *
+ * `notes` must be in order of start.
+ */
+export function shapedFigures(
+  notes: readonly { start: number; volume: number }[],
+  gap = FIGURE_GAP
+): ShapedFigure[] {
+  const figures: ShapedFigure[] = [];
+  let from = 0;
+  while (from < notes.length - 2) {
+    const step = Math.sign(notes[from + 1].volume - notes[from].volume);
+    let to = from;
+    while (
+      step !== 0 &&
+      to + 1 < notes.length &&
+      notes[to + 1].start - notes[to].start <= gap &&
+      notes[to + 1].start - notes[to].start >= FIGURE_STEP &&
+      Math.sign(notes[to + 1].volume - notes[to].volume) === step
+    ) {
+      to++;
+    }
+    if (to - from >= 2 && Math.abs(notes[to].volume - notes[from].volume) >= 2) {
+      figures.push({ from, to, words: step < 0 ? 'dim.' : 'cresc.' });
+      from = to + 1;
+    } else {
+      from++;
+    }
+  }
+  return figures;
+}
+
+/**
+ * Two figures `sim.` can stand for: the same levels in the same rhythm. Only
+ * that — ragnarok's 7 4 2 1 followed by a 7 4 2 is a figure of its own, with a
+ * hairpin of its own.
+ */
+function sameFigure(
+  notes: readonly { start: number; volume: number }[],
+  a: ShapedFigure,
+  b: ShapedFigure
+): boolean {
+  if (a.to - a.from !== b.to - b.from) return false;
+  for (let i = 0; i <= a.to - a.from; i++) {
+    if (notes[a.from + i].volume !== notes[b.from + i].volume) return false;
+    if (
+      i > 0 &&
+      notes[a.from + i].start - notes[a.from + i - 1].start !==
+        notes[b.from + i].start - notes[b.from + i - 1].start
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -203,22 +295,108 @@ export interface DynamicMark {
  * volume on every note, and a mark under every head is noise. Inside the hold
  * the LOUDER level stands — the accent is what a reader has to see — and a
  * change that comes straight back to the level before it is dropped.
+ *
+ * A shaped figure (`shapedFigures`) is written as its level and a hairpin under
+ * the first, `sim.` under the next one just like it, its dashes running on over
+ * the ones after that, until some other mark is printed. A figure that turns straight
+ * into one going the other way — wookie hole's 6 4 2 1 2 4 6 8 on one held
+ * note — is a level swaying, not a figure, and is read note by note as before.
+ * After a hairpin the reader is where it ends, so going back to where it began
+ * is written — ragnarok's mp over the 7 after 7 4 2 1 — unless a `sim.` that
+ * goes on already says the figure comes round again.
  */
 export function dynamicMarks(
   notes: readonly { start: number; volume: number }[],
   hold = DYNAMIC_HOLD
 ): DynamicMark[] {
+  const sorted = [...notes].sort((a, b) => a.start - b.start);
+  const found = shapedFigures(sorted);
+  const swaying = (a: ShapedFigure | undefined, b: ShapedFigure | undefined) =>
+    !!a && !!b && b.from === a.to + 1 && a.words !== b.words;
+  const figureAt = new Map<number, ShapedFigure>();
+  found.forEach((figure, i) => {
+    if (!swaying(found[i - 1], figure) && !swaying(figure, found[i + 1])) {
+      figureAt.set(figure.from, figure);
+    }
+  });
+
   const marks: DynamicMark[] = [];
-  for (const note of [...notes].sort((a, b) => a.start - b.start)) {
+  // The level the reader is at.
+  let heard: Dynamic | null = null;
+  // The figure the last words were about, and whether its `sim.` has been printed.
+  let stated: ShapedFigure | null = null;
+  let similar = false;
+  // A plain mark breaks a run of `sim.`; taken back, it gives the run back.
+  const broken = new Map<DynamicMark, { stated: ShapedFigure | null; similar: boolean }>();
+  const pop = () => {
+    const mark = marks.pop()!;
+    const run = broken.get(mark);
+    if (run) ({ stated, similar } = run);
+  };
+  /**
+   * The next figure after note `i` is one more like `like`, and nothing between says otherwise —
+   * Intruder Excluder's 6 6 before each 6 4 2 1 is the same figure coming round, not news.
+   */
+  const starts = [...figureAt.keys()].sort((a, b) => a - b);
+  const simGoesOn = (i: number, like: ShapedFigure) => {
+    const next = starts.find((start) => start > i);
+    if (next === undefined || !sameFigure(sorted, like, figureAt.get(next)!)) return false;
+    const level = dynamicOf(sorted[i].volume);
+    for (let k = i + 1; k < next; k++) if (dynamicOf(sorted[k].volume) !== level) return false;
+    return true;
+  };
+  for (let i = 0; i < sorted.length; i++) {
+    const note = sorted[i];
     const dynamic = dynamicOf(note.volume);
+    const figure = figureAt.get(i);
     const last = marks[marks.length - 1];
-    if (last?.dynamic === dynamic) continue;
-    if (last && note.start - last.tick < hold) {
-      if (DYNAMICS.indexOf(dynamic) > DYNAMICS.indexOf(last.dynamic)) last.dynamic = dynamic;
-      if (marks[marks.length - 2]?.dynamic === last.dynamic) marks.pop();
+    if (figure) {
+      // `p`, and a beat later `mp` and a hairpin: the figure's mark says it, as the louder.
+      // At the same level the mark stays and the hairpin goes on from it, bare.
+      if (
+        last &&
+        !last.words &&
+        note.start - last.tick < hold &&
+        DYNAMICS.indexOf(last.dynamic) < DYNAMICS.indexOf(dynamic)
+      ) {
+        pop();
+        // Its level is now the figure's to state.
+        heard = marks[marks.length - 1]?.dynamic ?? null;
+      }
+      const until = sorted[figure.to].start;
+      if (stated && sameFigure(sorted, stated, figure)) {
+        if (similar) marks[marks.length - 1].until = until;
+        else marks.push({ tick: note.start, dynamic, words: 'sim.', until });
+        similar = true;
+      } else {
+        const mark: DynamicMark = { tick: note.start, dynamic, words: figure.words, until };
+        if (heard === dynamic) mark.bare = true;
+        marks.push(mark);
+        stated = figure;
+        similar = false;
+      }
+      // The hairpin has taken the reader down (or up) to where the figure ends.
+      heard = dynamicOf(sorted[figure.to].volume);
+      i = figure.to;
       continue;
     }
-    marks.push({ tick: note.start, dynamic });
+    if (heard === dynamic) continue;
+    // Back at the level of a run of `sim.` that goes on: the `sim.` says so already.
+    if (stated && dynamic === dynamicOf(sorted[stated.from].volume) && simGoesOn(i, stated)) {
+      heard = dynamic;
+      continue;
+    }
+    heard = dynamic;
+    if (last && !last.words && note.start - last.tick < hold) {
+      if (DYNAMICS.indexOf(dynamic) > DYNAMICS.indexOf(last.dynamic)) last.dynamic = dynamic;
+      if (marks[marks.length - 2]?.dynamic === last.dynamic) pop();
+      heard = marks[marks.length - 1].dynamic;
+      continue;
+    }
+    const mark: DynamicMark = { tick: note.start, dynamic };
+    broken.set(mark, { stated, similar });
+    stated = null;
+    marks.push(mark);
   }
   return marks;
 }
@@ -918,7 +1096,8 @@ export function buildScore(
      * holds as long as the longest of them. A part with one note at a time is untouched.
      */
     const together = new Map<number, ScoreNote[]>();
-    for (const note of part.notes) together.set(note.start, [...(together.get(note.start) ?? []), note]);
+    for (const note of part.notes)
+      together.set(note.start, [...(together.get(note.start) ?? []), note]);
     const groups = [...together.values()];
     const leads = groups.map((group) =>
       group.length === 1
@@ -984,8 +1163,18 @@ export function buildScore(
       const voice = crossStaffVoice(heads());
       const on = (staff: 'treble' | 'bass') =>
         voice.map((items) => items.filter((item) => item.staff === staff));
-      staves.push({ partId: part.id, kind: 'treble', bars: on('treble'), voiceBars: voice });
-      staves.push({ partId: part.id, kind: 'bass', bars: on('bass'), follows: true });
+      staves.push({
+        partId: part.id,
+        kind: 'treble',
+        bars: on('treble'),
+        voiceBars: voice,
+      });
+      staves.push({
+        partId: part.id,
+        kind: 'bass',
+        bars: on('bass'),
+        follows: true,
+      });
     }
     const loud = notes.filter(
       (note): note is ScoreNote & { volume: number } => note.volume !== undefined

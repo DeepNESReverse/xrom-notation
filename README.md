@@ -25,6 +25,9 @@ sixty-fourth notes — and it tells you how to write them:
   rates mapped onto the drum lines.
 - **Dynamics, bends and accents:**
   - dynamics read from volume levels;
+  - a figure whose level falls or rises note by note (4 3 2 1 in sixteenths)
+    written as its level and a hairpin, the next one like it as `sim.` with
+    dashes for as long as it holds;
   - slides, bends and vibrato read from pitch curves;
   - grace notes and echoes in brackets;
   - accents and beams that follow them, in a passage you name.
@@ -89,6 +92,10 @@ console.log(score.dynamics.lead); // [{ tick: 0, dynamic: 'f' }]
 - `grid` and `shift` — where the bar lines fall.
 - `barCount`.
 - `dynamics` and `phases` per part. `phases` is the delay taken out of each part.
+  A dynamic is `{ tick, dynamic }`, and on a shaped figure also `words`
+  (`'dim.'` or `'cresc.'` — a hairpin; `'sim.'` — the word and dashes, no
+  level printed), `until` (the tick of the last note the hairpin or the dashes
+  cover) and `bare` (a hairpin from a level already in force: print no letter).
 
 Each item is a head or a rest, with:
 - `start`, `ticks`, `duration`, `dots`;

@@ -365,6 +365,85 @@ describe('dynamicMarks', () => {
   });
 });
 
+describe('dynamicMarks — shaped figures', () => {
+  const fades = (from: number, times: number, levels: number[], step = 4) =>
+    Array.from({ length: times }, (_, k) =>
+      levels.map((volume, i) => ({ start: from + (k * levels.length + i) * step, volume }))
+    ).flat();
+
+  it('writes a fading figure as p and a hairpin, the next like it sim. with dashes over the rest', () => {
+    // ragnarok, pulse 1, tick 128: 4 3 2 1 in sixteenths, beat after beat.
+    expect(dynamicMarks(fades(128, 4, [4, 3, 2, 1]))).toEqual([
+      { tick: 128, dynamic: 'p', words: 'dim.', until: 140 },
+      { tick: 144, dynamic: 'p', words: 'sim.', until: 188 },
+    ]);
+  });
+
+  it('writes a rising one as cresc.', () => {
+    expect(dynamicMarks(fades(0, 1, [2, 3, 4, 5]))).toEqual([
+      { tick: 0, dynamic: 'pp', words: 'cresc.', until: 12 },
+    ]);
+  });
+
+  it('gives a different figure its own hairpin, bare when its level is already in force', () => {
+    // ragnarok, pulse 1, tick 256: 7 4 2 1, a 7, then 7 4 2 from the second 7.
+    const marks = dynamicMarks([
+      ...fades(256, 1, [7, 4, 2, 1]),
+      { start: 272, volume: 7 },
+      ...fades(276, 1, [7, 4, 2]),
+    ]);
+    expect(marks).toEqual([
+      { tick: 256, dynamic: 'mp', words: 'dim.', until: 268 },
+      { tick: 272, dynamic: 'mp' },
+      { tick: 276, dynamic: 'mp', words: 'dim.', until: 284, bare: true },
+    ]);
+  });
+
+  it('leaves a level swaying up and down to the plain marks', () => {
+    // wookie hole: 6 4 2 1 2 4 6 8 on one held note.
+    const marks = dynamicMarks(fades(0, 2, [6, 4, 2, 1, 2, 4, 6, 8]));
+    expect(marks.some((mark) => mark.words)).toBe(false);
+  });
+
+  it('leaves a fade faster than sixteenths to the plain marks — an echo', () => {
+    // Arctic Caverns: 8 4 2 1 in thirty-seconds on one pitch.
+    expect(dynamicMarks(fades(0, 2, [8, 4, 2, 1], 2)).some((mark) => mark.words)).toBe(false);
+  });
+
+  it('keeps a sim. going over notes at its level between the figures', () => {
+    // Intruder Excluder: 6 6, then 6 4 2 1, round and round.
+    const round = (from: number) => [
+      { start: from, volume: 6 },
+      { start: from + 4, volume: 6 },
+      ...fades(from + 8, 1, [6, 4, 2, 1]),
+    ];
+    const marks = dynamicMarks([...round(0), ...round(32), ...round(64)]);
+    expect(marks).toEqual([
+      { tick: 0, dynamic: 'mp' },
+      { tick: 8, dynamic: 'mp', words: 'dim.', until: 20, bare: true },
+      { tick: 40, dynamic: 'mp', words: 'sim.', until: 84 },
+    ]);
+  });
+
+  it('folds a quieter mark just before a figure into the figure’s', () => {
+    const marks = dynamicMarks([{ start: 0, volume: 4 }, ...fades(4, 1, [7, 4, 2])]);
+    expect(marks).toEqual([{ tick: 4, dynamic: 'mp', words: 'dim.', until: 12 }]);
+  });
+
+  it('starts over with dim. after a mark printed between the figures', () => {
+    const marks = dynamicMarks([
+      ...fades(0, 1, [4, 3, 2, 1]),
+      { start: 32, volume: 15 },
+      ...fades(64, 1, [4, 3, 2, 1]),
+    ]);
+    expect(marks).toEqual([
+      { tick: 0, dynamic: 'p', words: 'dim.', until: 12 },
+      { tick: 32, dynamic: 'ff' },
+      { tick: 64, dynamic: 'p', words: 'dim.', until: 76 },
+    ]);
+  });
+});
+
 describe('noiseKey', () => {
   it('puts the periods on the lines the MusicXML export uses, hats as crosses', () => {
     expect(Array.from({ length: 16 }, (_, period) => noiseKey(period))).toEqual([
