@@ -36,11 +36,17 @@ Every rule was made on the music of Battletoads (NES), whose sound driver
 counts in exactly these ticks, and checked by ear across its twenty tracks.
 The comments in the source name the bars that decided each one.
 
-The output is a model for whatever draws it. Durations come out as VexFlow
-codes (`w h q 8 16 32 64` plus dots) and pitches as VexFlow keys (`f#/4`), so
-[VexFlow](https://www.vexflow.com) can draw it as it stands.
+It returns a model, not a picture: what to write, for whatever draws it.
+Durations come out as VexFlow codes (`w h q 8 16 32 64` plus dots) and pitches
+as VexFlow keys (`f#/4`), so [VexFlow](https://www.vexflow.com) can engrave it
+as it stands — or anything else can read it.
 
-**See it:** the score pages at [xrom.dev](https://xrom.dev).
+**Try it:** [xrom.dev/utils/notation](https://xrom.dev/utils/notation) — each
+rule above on a small piece, engraved: fewest heads and ties, tuplets, pickups,
+key spelling and chords, the grand staff, changing metres, dynamics, hairpins
+and `sim.`, accents, echoes, grace notes, slides, bends and drums. Change the
+key or the metre and see it rewritten, drop in a MIDI file of your own, and open
+the model `buildScore` returned for any of it.
 
 ## Install
 
