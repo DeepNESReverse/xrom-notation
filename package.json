@@ -1,6 +1,6 @@
 {
   "name": "@xromdev/notation",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Notes in ticks, read as a score: note values, ties, tuplets, bar lines, key spelling, clefs, grand staff and dynamics — no DOM, no renderer.",
   "license": "MIT",
   "author": "Oleksandr Maksymov",
