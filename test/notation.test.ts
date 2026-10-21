@@ -180,6 +180,27 @@ describe('tupletGroups', () => {
     ).toBe(0);
   });
 
+  it('starts a bracket only on its own division from the bar line, never across a beat', () => {
+    const third = (from: number) => [
+      { start: from, ticks: 3, midi: 60 },
+      { start: from + 3, ticks: 3, midi: 60 },
+      { start: from + 6, ticks: 2, midi: 60 },
+    ];
+    expect(groups(third(8))).toBe(1);
+    // Two ticks after an eighth (Terminator 2, Level 5): the bracket would run over the beam group.
+    expect(groups(third(10))).toBe(0);
+    // Half a quarter late: inside the bar, across the beat.
+    expect(
+      groups([
+        { start: 8, ticks: 5, midi: 60 },
+        { start: 13, ticks: 5, midi: 60 },
+        { start: 18, ticks: 6, midi: 60 },
+      ])
+    ).toBe(0);
+    // Measured from the bar line, not from tick 0: after a first bar of 2 ticks the eighths are 2, 10…
+    expect(tupletGroups(third(10), barGrid(64, 2)).size / 3).toBe(1);
+  });
+
   it('refuses three notes that are merely unequal', () => {
     expect(
       groups([
@@ -314,6 +335,15 @@ describe('the bar line and each voice’s phase', () => {
     const bass = [0, 32].map((start) => ({ start, ticks: 32, midi: 48 }));
     expect(voicePhase(lead, 0)).toBe(1);
     expect(voicePhase(bass, 0)).toBe(0);
+  });
+
+  it('leaves a voice alone once a reading has put it into tuplets', () => {
+    // Three ticks late, but with a sextuplet in it: moving it would knock the sextuplet off its beat.
+    const notes = [
+      ...[0, 1, 2].map((beat) => ({ start: 3 + beat * 16, ticks: 16, midi: 60 })),
+      ...[0, 1, 2, 3, 4, 5].map((k) => ({ start: 48 + (k * 16) / 6, ticks: 16 / 6, midi: 72 })),
+    ];
+    expect(voicePhase(notes, 0)).toBe(0);
   });
 
   it('takes a delay out even when the voice opens with a sliver on tick 0', () => {

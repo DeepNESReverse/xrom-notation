@@ -355,7 +355,12 @@ export function tupletGroups(
     )
       continue;
     const bar = barAt(grid, run[0].start);
-    if (run[0].start - barStartOf(grid, bar) > barTicksOf(grid, bar) - ticks) continue;
+    const inBar = run[0].start - barStartOf(grid, bar);
+    if (inBar > barTicksOf(grid, bar) - ticks) continue;
+    // On its own division from the bar line, so the bracket is the beam group: an eighth's triplet
+    // on an eighth, anything a beat or longer on a beat. Read from wherever three notes happen to
+    // sum right, brackets began mid-group and ran across the beat (Terminator 2, Level 5).
+    if (inBar % Math.min(ticks, TICKS_PER_QUARTER) !== 0) continue;
     const lengths = run.map((note) => note.ticks);
     if (Math.max(...lengths) - Math.min(...lengths) > 1) continue;
     if (lengths.some((length) => length * 3 === ticks)) continue;
@@ -959,6 +964,11 @@ export function voicePhase(
   offset: number,
   measureTicks = MEASURE_TICKS
 ): number {
+  // A voice a reading has already put into tuplets stands where it is meant to: its heads are
+  // fractions of a beat counted from the bar line, and a phase of whole ticks only knocks them off
+  // that grid. Terminator 2's Level 5 moved pulse 1 three ticks and printed its sextuplets as dotted
+  // thirty-seconds, while pulse 2, playing the same rhythm, kept its 6:4.
+  if (notes.some((note) => !Number.isInteger(note.start) || !Number.isInteger(note.ticks))) return 0;
   let best = 0;
   let bestCost = Infinity;
   for (let phase = 0; phase <= MAX_PHASE; phase++) {
