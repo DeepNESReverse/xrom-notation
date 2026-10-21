@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MEASURE_TICKS, barGrid, type StaffItem } from '../src/notation.js';
 import {
+  type ScoreItem,
   DRUMS_PART,
   accentBeamGroups,
   accentedStarts,
@@ -592,6 +593,28 @@ describe('buildScore', () => {
       64
     );
     expect(score.dynamics.lead).toEqual([{ tick: score.shift, dynamic: 'ff' }]);
+  });
+
+  it('lets a long noise ring, tied over the bar line and marked l.v.; a short hit is still struck once', () => {
+    // Circus Charlie's Applause: two short hits, then one of 136 ticks that fades out the track.
+    const score = buildScore(
+      [],
+      [
+        { start: 0, ticks: 13, period: 8 },
+        { start: 13, ticks: 4, period: 8 },
+        { start: 17, ticks: 136, period: 7 },
+      ],
+      153
+    );
+    const bars = score.staves[0].bars as ScoreItem[][];
+    const heads = bars.flat().filter((item) => item.midi !== null);
+    // The long hit sounds to the end: no rest after it, a tie into bar two, l.v. on its first head only.
+    expect(bars[1].every((item) => item.midi !== null)).toBe(true);
+    expect(heads.filter((item) => item.letRing).map((item) => item.start)).toEqual([16]);
+    expect(bars[0].at(-1)?.tieStart).toBe(true);
+    expect(bars[1][0].tieStop).toBe(true);
+    // The short hits are not let ring and carry no tie.
+    expect(heads.filter((item) => item.start < 16).every((item) => !item.letRing && !item.tieStart)).toBe(true);
   });
 
   it('puts drums delayed by a tick back on the beat, sliver and all', () => {

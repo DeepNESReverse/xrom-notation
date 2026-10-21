@@ -696,6 +696,11 @@ export type ScoreItem = StaffItem & {
   /** The note is played short — see `ScoreNote.staccato`. A dot over its head. */
   staccato?: boolean;
   /**
+   * On a percussion head: the noise is let ring — a hit longer than `LET_RING_TICKS`, written at its
+   * full length, tied over bar lines, and marked "l.v." (laissez vibrer).
+   */
+  letRing?: boolean;
+  /**
    * The other heads on this one's stem, struck at the same moment: on a percussion staff, drums by
    * period — a cartridge plays its noise channel and its DMC samples at once, a hat over a kick; on
    * a pitched staff, notes by MIDI number — a violin's double and triple stops.
@@ -1023,6 +1028,9 @@ export function barKeys(
 /** The part id the percussion staff carries. */
 export const DRUMS_PART = 'drums';
 
+/** A noise hit longer than this (a half note) is let ring, not struck — see `ScoreItem.letRing`. */
+export const LET_RING_TICKS = TICKS_PER_QUARTER * 2;
+
 /** How a score is barred and read — everything `buildScore` takes beyond the notes. */
 export interface ScoreOptions {
   /** The tick the bar lines are counted from. Default 0. */
@@ -1242,13 +1250,28 @@ export function buildScore(
      * the rest of a long value, or the part carried over a bar line — is
      * written as rest: tied on a percussion staff it reads as a roll, and as a
      * second head it reads as a second hit.
+     *
+     * Not so a noise that is let ring: Circus Charlie's applause is one hit of
+     * 136 ticks fading 11 → 2, and rests after its head said the hall fell
+     * silent while it was still heard. A hit longer than `LET_RING_TICKS` keeps
+     * its whole length, tied over the bar lines, and its head is marked "l.v.".
      */
+    // The hit an item belongs to is the last one struck at or before it.
+    const struck = [...hits].sort((a, b) => a.start - b.start);
+    const rings = (item: StaffItem) => {
+      if (item.midi === null) return false;
+      let hit: (typeof struck)[number] | undefined;
+      for (const candidate of struck) if (candidate.start <= item.start) hit = candidate;
+      return !!hit && hit.ticks > LET_RING_TICKS && item.start < hit.start + hit.ticks;
+    };
     const bars = attachHeads(
       barsOf(hits).map((items) =>
-        items.map((item) =>
-          item.tieStop
-            ? { ...item, midi: null, tieStart: false, tieStop: false }
-            : { ...item, tieStart: false }
+        items.map((item): StaffItem =>
+          rings(item)
+            ? ({ ...item, ...(item.tieStop ? {} : { letRing: true }) } as ScoreItem)
+            : item.tieStop
+              ? { ...item, midi: null, tieStart: false, tieStop: false }
+              : { ...item, tieStart: false }
         )
       ),
       { levels: levelsOf(hits), chords }
