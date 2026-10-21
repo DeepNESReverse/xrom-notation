@@ -1035,30 +1035,48 @@ export function staffShift(offset: number, measureTicks = MEASURE_TICKS): number
 }
 
 /**
- * How a piece is barred: where its bar lines fall, and what its notes are moved
- * by to sit behind them.
+ * The three readings of a pickup — the notes before a piece's first bar line:
  *
- * Two readings of the same pickup. Left alone it gets a bar of its own, padded
- * in front with rests, and the music starts part way into bar one. `merged`
- * instead makes the OPENING BAR longer by the pickup and moves nothing: the run
- * and the note it lands on are one bar of 19/32, and the metre takes over after
- * it. The second reads better whenever the pickup is not a whole phrase — a bar
- * line through the middle of a run is worse than an irregular first bar.
+ * - `anacrusis`, the default and the way music is written: the opening bar is the pickup alone, as
+ *   short as it is, under the metre's own time signature — no rests in front, no signature of its
+ *   own. A piece that opens with one ends with the bar's complement (`buildScore`), so the two make
+ *   one whole bar between them. Circus Charlie's Aerial Bar: two eighths, then 6/8.
+ * - `merged`: the OPENING BAR is longer by the pickup and nothing moves — the run and the note it
+ *   lands on are one bar of 19/32, and the metre takes over after it. It reads better whenever the
+ *   pickup is not a whole phrase: a bar line through the middle of a run is worse than an irregular
+ *   first bar.
+ * - `padded`: a whole bar of the metre, rests in front of the pickup, the music starting part way
+ *   into bar one. What every pickup was before `anacrusis`, kept for scores checked that way.
+ *
+ * `true` and `false` are the old flag: `merged` and `anacrusis`.
+ */
+export type Pickup = 'anacrusis' | 'merged' | 'padded';
+
+/** A pickup reading given as the old boolean flag or by name — see `Pickup`. */
+export const pickupOf = (pickup: boolean | Pickup | undefined): Pickup =>
+  pickup === true ? 'merged' : pickup === false || pickup === undefined ? 'anacrusis' : pickup;
+
+/**
+ * How a piece is barred: where its bar lines fall, and what its notes are moved
+ * by to sit behind them — see `Pickup` for the three readings of a pickup.
  */
 export function barring(
   offset: number,
   measureTicks = MEASURE_TICKS,
-  merged = false,
+  reading: boolean | Pickup = 'anacrusis',
   /** Bars later in the piece with a length of their own — see `BarGrid`. */
   oddBars: readonly OddBar[] = []
 ): { grid: BarGrid; shift: number } {
   const pickup = ((offset % measureTicks) + measureTicks) % measureTicks;
-  return merged
-    ? { grid: barGrid(measureTicks, measureTicks + pickup, oddBars), shift: 0 }
-    : {
-        grid: barGrid(measureTicks, measureTicks, oddBars),
-        shift: staffShift(offset, measureTicks),
-      };
+  switch (pickupOf(reading)) {
+    case 'merged':
+      return { grid: barGrid(measureTicks, measureTicks + pickup, oddBars), shift: 0 };
+    case 'anacrusis':
+      if (pickup > 0) return { grid: barGrid(measureTicks, pickup, oddBars), shift: 0 };
+    // falls through: no pickup, nothing to read
+    case 'padded':
+      return { grid: barGrid(measureTicks, measureTicks, oddBars), shift: staffShift(offset, measureTicks) };
+  }
 }
 
 export type Clef = 'treble' | 'bass';

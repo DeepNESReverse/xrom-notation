@@ -548,10 +548,34 @@ describe('buildScore', () => {
     expect(bars[0].reduce((sum, item) => sum + item.ticks, 0)).toBe(38);
     expect(bars[1].reduce((sum, item) => sum + item.ticks, 0)).toBe(32);
 
-    // The ordinary reading of the same track pads a bar of rests in front instead.
-    const padded = buildScore([{ id: 'lead', notes }], [], 70, { offset: 6, measureTicks: 32 });
+    // The padded reading of the same track puts a bar of rests in front instead.
+    const padded = buildScore([{ id: 'lead', notes }], [], 70, { offset: 6, measureTicks: 32, mergePickup: 'padded' });
     expect(padded.shift).toBe(26);
     expect(padded.barCount).toBe(3);
+  });
+
+  it('writes a pickup as an anacrusis by default, and pays it back in the closing bar', () => {
+    // Aerial Bar's shape: 6/8 (48 ticks), two eighths before the first bar line, 768 ticks in all.
+    const notes = [
+      { start: 0, ticks: 8, midi: 72 },
+      { start: 8, ticks: 8, midi: 71 },
+      { start: 16, ticks: 752, midi: 69 },
+    ];
+    const score = buildScore([{ id: 'lead', notes }], [], 768, { offset: 16, measureTicks: 48 });
+    expect(score.shift).toBe(0);
+    // 16 + 15 × 48 + 32: the opening bar is the pickup alone, the closing one its complement.
+    expect(score.grid).toEqual({ measureTicks: 48, firstBarTicks: 16, oddBars: [{ bar: 16, ticks: 32 }] });
+    expect(score.barCount).toBe(17);
+    const bars = score.staves[0].voiceBars ?? score.staves[0].bars;
+    expect(bars[0].reduce((sum, item) => sum + item.ticks, 0)).toBe(16);
+    expect(bars[16].reduce((sum, item) => sum + item.ticks, 0)).toBe(32);
+    expect(bars[0].every((item) => item.midi !== null)).toBe(true);
+  });
+
+  it("leaves the closing bar whole when it is not the pickup's complement", () => {
+    const notes = [{ start: 0, ticks: 700, midi: 69 }];
+    const score = buildScore([{ id: 'lead', notes }], [], 700, { offset: 16, measureTicks: 48 });
+    expect(score.grid).toEqual({ measureTicks: 48, firstBarTicks: 16 });
   });
 
   it('writes a drum hit that crosses a bar line as one head, not two', () => {

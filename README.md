@@ -115,7 +115,7 @@ Each item is a head or a rest, with:
 |---|---|---|
 | `offset` | 0 | The tick the bar lines are counted from. |
 | `measureTicks` | 64 | Ticks in a bar: 64 is 4/4, 32 is 2/4, 48 is 3/4. |
-| `mergePickup` | false | Put a pickup into a longer opening bar instead of a bar of rests. |
+| `mergePickup` | false | How a pickup is barred (`Pickup`): `false`/`'anacrusis'` — a short opening bar under the metre's signature, paid back by a closing bar short by as much; `true`/`'merged'` — one longer opening bar; `'padded'` — a whole bar with rests in front. |
 | `oddBars` | `[]` | `{ bar, ticks }` — later bars with a length of their own. |
 | `accentBeams` | none | `{ from, to }` ticks: mark accents there, and beam by them. |
 

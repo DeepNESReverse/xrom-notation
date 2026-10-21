@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   barAt,
+  barring,
   barCountOf,
   barGrid,
   barStartOf,
@@ -660,5 +661,17 @@ describe('which bracket', () => {
       [64, '16', '3:2'],
       [65, '8', ''],
     ]);
+  });
+});
+
+describe('barring', () => {
+  it('reads a pickup three ways', () => {
+    expect(barring(16, 48)).toEqual({ grid: { measureTicks: 48, firstBarTicks: 16 }, shift: 0 });
+    expect(barring(16, 48, false)).toEqual(barring(16, 48, 'anacrusis'));
+    expect(barring(16, 48, true)).toEqual({ grid: { measureTicks: 48, firstBarTicks: 64 }, shift: 0 });
+    expect(barring(16, 48, 'padded')).toEqual({ grid: { measureTicks: 48, firstBarTicks: 48 }, shift: 32 });
+    // No pickup, nothing to read.
+    expect(barring(0, 48)).toEqual({ grid: { measureTicks: 48, firstBarTicks: 48 }, shift: 0 });
+    expect(barring(96, 48)).toEqual(barring(0, 48));
   });
 });

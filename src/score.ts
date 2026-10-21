@@ -14,7 +14,12 @@ import {
   TICKS_PER_QUARTER,
   barAt,
   barCountOf,
+  barGrid,
+  barStartOf,
+  barTicksOf,
   barring,
+  pickupOf,
+  type Pickup,
   chooseClef,
   shiftNotes,
   staffItems,
@@ -1030,8 +1035,10 @@ export interface ScoreOptions {
    * The music then starts on the score's first tick, and the opening bar is as
    * much longer than the metre as the pickup is — one bar of 19/32 in front of
    * Volkmire's Inferno Race's 2/4, instead of a bar of rests with the run in it.
+   * `false`, the default, is the anacrusis: a short opening bar, and a closing bar short by as
+   * much. All three readings, `padded` among them, are in `Pickup`.
    */
-  mergePickup?: boolean;
+  mergePickup?: boolean | Pickup;
   /**
    * The passage read by its accents: the only place accents are marked (`accentedStarts`), and
    * where the beams follow them rather than the beat (`accentBeamGroups`). None given, no accents.
@@ -1056,6 +1063,21 @@ export interface ScoreOptions {
  * `options.measureTicks` the length of a bar; any other notation view of the
  * same piece should use the same two, so they all bar the music the same way.
  */
+/**
+ * An anacrusis is paid back at the end: a piece that opens with a short bar and stops short of a
+ * whole closing bar by exactly as much gets its closing bar that long, so the two make one bar
+ * between them — Aerial Bar's two eighths in front, four at the end. A closing bar of any other
+ * length is left whole, rests and all.
+ */
+export function withClosingBar(grid: BarGrid, end: number, reading: Pickup): BarGrid {
+  if (reading !== 'anacrusis' || grid.firstBarTicks >= grid.measureTicks) return grid;
+  const last = barCountOf(grid, end) - 1;
+  if (last < 1 || grid.oddBars?.some((odd) => odd.bar === last)) return grid;
+  const tail = end - barStartOf(grid, last);
+  if (tail <= 0 || tail + grid.firstBarTicks !== barTicksOf(grid, last)) return grid;
+  return barGrid(grid.measureTicks, grid.firstBarTicks, [...(grid.oddBars ?? []), { bar: last, ticks: tail }]);
+}
+
 export function buildScore(
   parts: readonly {
     id: string;
@@ -1074,8 +1096,10 @@ export function buildScore(
     alignVoices = true,
   }: ScoreOptions = {}
 ): ScoreModel {
-  const { grid, shift } = barring(offset, measureTicks, mergePickup, oddBars);
+  const barred = barring(offset, measureTicks, mergePickup, oddBars);
+  const { shift } = barred;
   const end = totalTicks + shift;
+  const grid = withClosingBar(barred.grid, end, pickupOf(mergePickup));
   const barCount = barCountOf(grid, end);
   const barsOf = (notes: readonly TickNote[]) =>
     staffMeasures(staffItems(notes, end, grid), end, grid).map((bar) => bar.items);
