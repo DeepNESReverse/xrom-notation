@@ -675,3 +675,17 @@ describe('barring', () => {
     expect(barring(96, 48)).toEqual(barring(0, 48));
   });
 });
+
+describe('staffMeasures at the end of a track', () => {
+  it('writes the rest to the track end and the padding to the bar line as one gap', () => {
+    // Ice Climber's Pause: the last head written 14 ticks from 16, the track ending at 31 — the
+    // tick to the end and the tick on to the beat are one 32nd rest, not two 64ths.
+    const items = staffItems([{ start: 16, ticks: 14, midi: 67 }], 31);
+    const [bar] = staffMeasures(items, 31);
+    const rests = bar.items.filter((item) => item.midi === null && item.start >= 30);
+    expect(rests.map((rest) => [rest.start, rest.ticks])).toEqual([
+      [30, 2],
+      [32, 32],
+    ]);
+  });
+});

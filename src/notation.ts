@@ -680,8 +680,18 @@ export function staffMeasures(
 
     // Filled to within a hair is full: a tuplet's steps are sums of fractions.
     if (barTicks - filled > ON_GRID) {
-      let at = start + filled;
-      for (const piece of decompose(filled, barTicks - filled, barTicks)) {
+      // The rests the ribbon already ends on join the padding, and the whole gap is written anew:
+      // Ice Climber's Pause stops a tick after its last written head, and the tick to the end of
+      // the track and the tick on to the beat came out as two 64th rests instead of one 32nd.
+      let from = filled;
+      while (inBar.length) {
+        const last = inBar[inBar.length - 1];
+        if (last.midi !== null || last.tuplet || !Number.isInteger(last.start)) break;
+        inBar.pop();
+        from -= last.ticks;
+      }
+      let at = start + from;
+      for (const piece of decompose(from, barTicks - from, barTicks)) {
         inBar.push({
           start: at,
           ticks: piece.ticks,

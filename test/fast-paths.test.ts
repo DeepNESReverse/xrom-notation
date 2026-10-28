@@ -104,8 +104,11 @@ describe('the fast paths say what the plain rules say', () => {
         measures.map((m, i) => (measures[i + 1]?.start ?? Infinity) - m.start)
       );
       measures.forEach((measure, index) => {
-        const own = measure.items.slice(0, reference[index].length);
-        expect(own).toEqual(reference[index]);
+        // Up to the last head: the rests a bar ends on are written again with its padding.
+        const kept = [...reference[index]];
+        while (kept.length && kept[kept.length - 1].midi === null) kept.pop();
+        const own = measure.items.slice(0, kept.length);
+        expect(own).toEqual(kept);
       });
     }
   });
