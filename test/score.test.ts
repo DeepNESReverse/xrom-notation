@@ -211,6 +211,28 @@ describe('effectsOf', () => {
     expect(items.find((item) => item.start === 384)?.carry).toBeUndefined();
   });
 
+  it('carries a wave onto the pieces of its note, as it does a curve', () => {
+    // Shikinjou's Title, triangle: a D with a light vibrato, held across bar lines.
+    const curve = [
+      [0, 0],
+      [0.25, 0.2],
+      [0.5, -0.2],
+      [0.75, 0.2],
+      [1, 0],
+    ] as const;
+    const model = buildScore(
+      [{ id: 't', notes: [{ start: 0, ticks: 288, midi: 50, bend: curve }] }],
+      [],
+      384
+    );
+    const items = model.staves[0].bars.flat();
+    expect(items.find((item) => item.effect)).toMatchObject({ effect: { kind: 'vibrato' } });
+    expect(items.find((item) => item.effect && 'curve' in item.effect!)).toBeUndefined();
+    const carried = items.filter((item) => item.carry);
+    expect(carried.length).toBeGreaterThanOrEqual(1);
+    expect(carried.every((item) => item.carry?.effect.kind === 'vibrato')).toBe(true);
+  });
+
   it('keeps a sweep too wide to bend as a line', () => {
     const effects = effectsOf([{ start: 2, ticks: 126, midi: 91, bend: up(-20.7) }]);
     expect(effects.get(2)?.kind).toBe('slide');

@@ -871,12 +871,16 @@ export function crossBarRuns(
   return runs;
 }
 
-/** Whether an effect is drawn along its note — and so has to carry on where the note does. */
+/**
+ * Whether an effect is drawn along its note — and so has to carry on where the note does. Every
+ * vibrato is: its curve, or its wave, which ran out at the end of a line and was not taken up again
+ * on the next one (Shikinjou's Title, triangle, a D held over the line's end).
+ */
 export function drawnAlong(effect: PitchEffect, measureTicks = MEASURE_TICKS): boolean {
   return (
     effect.kind === 'slide' ||
     (effect.kind === 'bend' && effect.ticks >= measureTicks) ||
-    (effect.kind === 'vibrato' && effect.curve !== undefined)
+    effect.kind === 'vibrato'
   );
 }
 
