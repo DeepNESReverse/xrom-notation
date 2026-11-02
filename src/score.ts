@@ -161,6 +161,11 @@ export const TREBLE_ONLY_MIN = 55;
  * triangle carries the bass in every one of the twenty tracks, and in
  * Ragnarok's canyon it reaches D#4 at most — a ledger line and a half above the
  * bass staff. Where both single staves would do, the part's middle decides.
+ *
+ * Nor does a part that never goes below E3 get one, however high it climbs: the
+ * phrases put every beam group of it on the treble (`TREBLE_FLOOR`), so its bass
+ * staff would hold rests from the first bar to the last — Flappy's Music A,
+ * triangle, F3 to D5.
  */
 export function partStaves(notes: readonly { midi: number }[]): ('treble' | 'bass')[] {
   if (notes.length === 0) return ['treble'];
@@ -174,7 +179,7 @@ export function partStaves(notes: readonly { midi: number }[]): ('treble' | 'bas
   const treble = low >= TREBLE_ONLY_MIN;
   if (bass && treble) return [chooseClef(notes)];
   if (bass) return ['bass'];
-  if (treble) return ['treble'];
+  if (treble || low >= TREBLE_FLOOR) return ['treble'];
   return ['treble', 'bass'];
 }
 

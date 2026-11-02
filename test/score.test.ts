@@ -331,6 +331,13 @@ describe('partStaves', () => {
     expect(partStaves(range(41, 81))).toEqual(['treble', 'bass']);
   });
 
+  it('gives no bass staff to a part the phrases would leave on the treble throughout', () => {
+    // Flappy's Music A, triangle: F3 to D5, never below E3.
+    expect(partStaves(range(53, 74))).toEqual(['treble']);
+    expect(partStaves(range(52, 74))).toEqual(['treble']);
+    expect(partStaves(range(51, 74))).toEqual(['treble', 'bass']);
+  });
+
   it('lets the middle decide when either staff would do', () => {
     expect(partStaves([{ midi: 57 }, { midi: 62 }, { midi: 63 }])).toEqual(['treble']);
     expect(partStaves([{ midi: 56 }, { midi: 56 }, { midi: 63 }])).toEqual(['bass']);
