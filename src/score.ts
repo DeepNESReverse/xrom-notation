@@ -1122,7 +1122,7 @@ export function buildScore(
     staffMeasures(staffItems(notes, end, grid), end, grid).map((bar) => bar.items);
   const phases: Record<string, number> = {};
   const moved = <T extends TickNote>(notes: readonly T[], id?: string): T[] => {
-    const phase = alignVoices && notes.length > 0 ? voicePhase(notes, offset, measureTicks) : 0;
+    const phase = alignVoices && notes.length > 0 ? voicePhase(notes, offset, measureTicks, totalTicks) : 0;
     if (id !== undefined) phases[id] = phase;
     return shiftNotes(notes, shift - phase);
   };

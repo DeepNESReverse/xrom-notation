@@ -356,6 +356,31 @@ describe('the bar line and each voice’s phase', () => {
     expect(voicePhase(notes, 0)).toBe(1);
   });
 
+  it('writes a voice a tick late rather than three early, when both read the same', () => {
+    // Mother Brain's pulse 1: pulse 2's sixteenths again, eleven ticks later.
+    const notes = Array.from({ length: 12 }, (_, k) => ({ start: 11 + k * 4, ticks: 4, midi: 41 + (k % 2) }));
+    expect(notationCost(notes, -1)).toBe(notationCost(notes, 3));
+    expect(voicePhase(notes, 0)).toBe(-1);
+  });
+
+  it('does not push a whole note past the end to write a voice later', () => {
+    const notes = [0, 4, 8].map((k) => ({ start: 3 + k, ticks: 4, midi: 60 })).concat([{ start: 63, ticks: 2, midi: 60 }]);
+    expect(voicePhase(notes, 0, 64, 64)).not.toBeLessThan(0);
+  });
+
+  it('never takes a phase that would cut a whole note off the start', () => {
+    // Metroid's Mother Brain triangle: an A2 on tick 0, then a C♯2 two ticks later and eighths of
+    // sixteenths after it. A phase of 2 writes the rest as cheaply, but the A2 would be gone.
+    const notes = [
+      { start: 0, ticks: 2, midi: 45 },
+      ...[0, 1, 2, 3, 4, 5, 6, 7].map((k) => ({ start: 2 + k * 8, ticks: 8, midi: 37 })),
+    ];
+    expect(notationCost(notes, 2)).toBeLessThan(notationCost(notes, 0));
+    const phase = voicePhase(notes, 0);
+    expect(phase).toBeLessThanOrEqual(0);
+    expect(shiftNotes(notes, -phase)).toHaveLength(notes.length);
+  });
+
   it('cuts a note moved before tick zero at it, and drops one left with nothing', () => {
     const moved = shiftNotes(
       [

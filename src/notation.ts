@@ -951,8 +951,8 @@ function spellingCost(inBar: number, chunk: number, measureTicks: number): numbe
 }
 
 /**
- * How many ticks one channel is written behind the beat. Never more than
- * `MAX_PHASE`.
+ * How many ticks one channel is written EARLIER than it sounds — or, negative, later. Never more
+ * than `MAX_PHASE` either way.
  *
  * The delay is AUTHORED, not the driver's. Nearly every track opens a channel
  * or two with an explicit `$80` rest one sixty-fourth long, and Intruder
@@ -966,27 +966,52 @@ function spellingCost(inBar: number, chunk: number, measureTicks: number): numbe
  * STATED: a staff should label every voice it moved, and not move its playhead.
  * Longer echoes (Surf City's six ticks) are past `MAX_PHASE` and are written as
  * they sound.
+ *
+ * Written LATER only where that moves it less for no more cost (never because later is cheaper:
+ * a voice that starts ahead of the beat is the composer's push):
+ * Metroid's Mother Brain plays pulse 2's figure again on pulse 1 eleven ticks later — three ticks
+ * early put it on tick 8, under pulse 2's third note; a tick late puts it on 12, a sixteenth from
+ * where it is heard. (Until 0.1.9 a voice was only ever written earlier.) A tie of the same size
+ * keeps the earlier writing, as before.
+ *
+ * `totalTicks`, when given, keeps a later writing from pushing a whole note past the end.
  */
 export const MAX_PHASE = 3;
 
 export function voicePhase(
   notes: readonly TickNote[],
   offset: number,
-  measureTicks = MEASURE_TICKS
+  measureTicks = MEASURE_TICKS,
+  totalTicks?: number
 ): number {
   // A voice a reading has already put into tuplets stands where it is meant to: its heads are
   // fractions of a beat counted from the bar line, and a phase of whole ticks only knocks them off
   // that grid. Terminator 2's Level 5 moved pulse 1 three ticks and printed its sextuplets as dotted
   // thirty-seconds, while pulse 2, playing the same rhythm, kept its 6:4.
   if (notes.some((note) => !Number.isInteger(note.start) || !Number.isInteger(note.ticks))) return 0;
+  // A phase may cut a one-tick sliver off the start (ragnarok's canyon, see `shiftNotes`), but never
+  // a whole note: Metroid's Mother Brain opens its triangle with an A2 on tick 0, two ticks long, and a
+  // phase of 2 — as cheap to write as none — left it out of the score.
+  const shift = staffShift(offset, measureTicks);
+  const loses = (phase: number) =>
+    phase > 0
+      ? notes.some((note) => note.ticks > 1 && note.start + note.ticks + shift - phase <= 0)
+      : totalTicks !== undefined && notes.some((note) => note.ticks > 1 && note.start - phase >= totalTicks);
   let best = 0;
   let bestCost = Infinity;
   for (let phase = 0; phase <= MAX_PHASE; phase++) {
+    if (phase > 0 && loses(phase)) continue;
     const cost = notationCost(notes, offset + phase, measureTicks);
     if (cost < bestCost) {
       bestCost = cost;
       best = phase;
     }
+  }
+  // Written later only to move it less for no more cost — never because later is cheaper: a voice
+  // that starts AHEAD of the beat is the composer's push, and stays where it is.
+  for (let phase = -1; -phase < best; phase--) {
+    if (loses(phase)) continue;
+    if (notationCost(notes, offset + phase, measureTicks) <= bestCost) return phase;
   }
   return best;
 }
