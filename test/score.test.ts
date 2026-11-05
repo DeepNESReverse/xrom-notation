@@ -297,6 +297,23 @@ describe('crossStaffVoice', () => {
     expect(staffs([bar])).toEqual([['bass', 'treble', 'treble']]);
   });
 
+  it('writes a tuplet as one group: quarter triplets stay on one staff', () => {
+    // Metroid's Mission Completed Successfully, bar 44: G3 F♯3 D3 | E3 D3 E3.
+    const span = (first: boolean, last: boolean) => ({
+      tuplet: { num: 3, occupied: 2, first, last },
+    });
+    const triplet = (start: number, [a, b, c]: number[]) => [
+      item(start, a, 'q', 11, span(true, false)),
+      item(start + 11, b, 'q', 10, span(false, false)),
+      item(start + 21, c, 'q', 11, span(false, true)),
+    ];
+    const bar = [...triplet(0, [55, 54, 50]), ...triplet(32, [52, 50, 52])];
+    expect(staffs([bar])).toEqual([Array(6).fill('bass')]);
+    // Bar 64: C3 G3 C4 | D3 G3 C4 — the C4s stay on the bass with their triplets.
+    const climb = [...triplet(0, [48, 55, 60]), ...triplet(32, [50, 55, 60])];
+    expect(staffs([climb])).toEqual([Array(6).fill('bass')]);
+  });
+
   it('keeps bar 6 whole on the treble: A3 against E4 and G4', () => {
     expect(staffs([[...beat(0, [57, 67, 67, 57]), ...beat(16, [64, 57, 64, 64])]])).toEqual([
       ['treble', 'treble', 'treble', 'treble', 'treble', 'treble', 'treble', 'treble'],

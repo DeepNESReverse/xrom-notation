@@ -551,10 +551,48 @@ function exactTupletsByBeat(notes: readonly TickNote[], grid: BarGrid): Map<numb
   return merged;
 }
 
+/**
+ * Four even notes on a dotted beat, written as four in the time of three (`StaffOptions.quadruplets`):
+ * four of 6 ticks over a dotted quarter are four eighths under a 4, and four of 3 over a dotted
+ * eighth four sixteenths. Spelt by value they are dotted sixteenths (and dotted thirty-seconds),
+ * correct and hard to read — Metroid's Brinstar, 12/8, pulse 2 at the end of bar 8.
+ *
+ * Only four notes that run on, each the same length, from a point the dotted beat starts on.
+ */
+const QUADRUPLET_SPANS = [24, 12];
+
+function quadrupletAt(
+  ordered: readonly TickNote[],
+  index: number,
+  grid: BarGrid
+): { span: number; value: NoteValue } | null {
+  const run = ordered.slice(index, index + 4);
+  if (run.length < 4) return null;
+  const bar = barAt(grid, run[0].start);
+  const inBar = run[0].start - barStartOf(grid, bar);
+  for (const span of QUADRUPLET_SPANS) {
+    const unit = span / 4;
+    if (inBar % span !== 0 || inBar + span > barTicksOf(grid, bar)) continue;
+    if (!run.every((note, k) => note.ticks === unit && note.start === run[0].start + k * unit)) continue;
+    // A note struck with the first is no part of it (a chord comes in as its own note).
+    if (ordered[index + 4]?.start === run[3].start) continue;
+    const value = VALUES.find((candidate) => candidate.ticks === span / 3 && candidate.dots === 0);
+    if (value) return { span, value };
+  }
+  return null;
+}
+
+/** How `staffItems` spells what it can spell more than one way. */
+export interface StaffOptions {
+  /** Four even notes on a dotted beat as a quadruplet — see `quadrupletAt`. */
+  quadruplets?: boolean;
+}
+
 export function staffItems(
   notes: readonly TickNote[],
   totalTicks: number,
-  grid: BarGrid = barGrid()
+  grid: BarGrid = barGrid(),
+  options: StaffOptions = {}
 ): StaffItem[] {
   const items: StaffItem[] = [];
   const ordered = [...notes].sort((a, b) => a.start - b.start);
@@ -614,6 +652,25 @@ export function staffItems(
     }
     if (note.start > cursor) push(cursor, note.start - cursor, null);
     cursor = Math.max(cursor, note.start);
+
+    const quadruplet = options.quadruplets && cursor === note.start ? quadrupletAt(ordered, index, grid) : null;
+    if (quadruplet && note.start + quadruplet.span <= totalTicks) {
+      ordered.slice(index, index + 4).forEach((head, k) =>
+        items.push({
+          start: head.start,
+          ticks: head.ticks,
+          midi: head.midi,
+          duration: quadruplet.value.duration,
+          dots: 0,
+          tieStart: false,
+          tieStop: false,
+          tuplet: { num: 4, occupied: 3, first: k === 0, last: k === 3 },
+        })
+      );
+      cursor = note.start + quadruplet.span;
+      skipTo = index + 4;
+      return;
+    }
 
     const length = Math.min(note.ticks, Math.max(0, totalTicks - cursor));
     if (length <= 0) return;

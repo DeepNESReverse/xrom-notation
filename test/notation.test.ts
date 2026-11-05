@@ -714,3 +714,24 @@ describe('staffMeasures at the end of a track', () => {
     ]);
   });
 });
+
+describe('staffItems with quadruplets', () => {
+  // Metroid's Brinstar, 12/8 (96 ticks a bar), pulse 2: four notes of 6 ticks on the last dotted beat.
+  const grid = barGrid(0, 96);
+  const notes = [72, 78, 84, 90].map((start, i) => ({ start, ticks: 6, midi: 69 + i }));
+
+  it('writes four even notes on a dotted beat as four eighths in the time of three', () => {
+    const items = staffItems(notes, 96, grid, { quadruplets: true }).filter((item) => item.midi !== null);
+    expect(items.map((item) => [item.duration, item.dots, item.tuplet?.num, item.tuplet?.occupied])).toEqual([
+      ['8', 0, 4, 3],
+      ['8', 0, 4, 3],
+      ['8', 0, 4, 3],
+      ['8', 0, 4, 3],
+    ]);
+  });
+
+  it('spells them by value unless asked', () => {
+    const items = staffItems(notes, 96, grid).filter((item) => item.midi !== null);
+    expect(items.every((item) => item.duration === '16' && item.dots === 1 && !item.tuplet)).toBe(true);
+  });
+});

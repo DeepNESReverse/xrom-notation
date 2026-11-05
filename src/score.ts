@@ -63,6 +63,7 @@ const BEAMED = new Set(['8', '16', '32', '64']);
  *  - a group that never goes below E3 (`TREBLE_FLOOR`) is on the treble, E3
  *    included. Ragnarok's canyon, pulse 1, bar 29, the third beat: A3 G3 C4 A3
  *    E4 C4 G4 E4 — a reader wanted it all on the treble.
+ *  - a tuplet is one group, whatever its notes' values — its bracket is what is followed.
  *  - a group that does go below E3 stays on the bass, E3s and all — bar 29's
  *    second beat, E3 G3 C3 E3…, which "would be ugly otherwise". Only its heads
  *    from middle C up cross to the treble, and the beam crosses with them — the
@@ -101,20 +102,40 @@ export function crossStaffVoice(bars: readonly (readonly ScoreItem[])[]): ScoreI
      */
     const barStart = items[0]?.start ?? 0;
     const groups = new Map<string, number[]>();
+    /*
+     * A tuplet is one group, its bracket what the reader follows: Metroid's Mission Completed
+     * Successfully, bar 44, quarter triplets G3 F♯3 D3 | E3 D3 E3 — counted note by note, the D3s
+     * went to the bass and the rest to the treble, the brackets torn between the staves (the user,
+     * 2026-11-05: "я бы делал тут в каком то одном стане").
+     */
+    let tuplet: string | null = null;
     items.forEach((item, index) => {
+      if (item.tuplet?.first) tuplet = `tuplet${index}`;
+      const inTuplet = item.tuplet ? tuplet : null;
+      if (item.tuplet?.last) tuplet = null;
       if (item.midi === null) return;
-      const key = BEAMED.has(item.duration)
-        ? `beat${Math.floor((item.start - barStart) / TICKS_PER_QUARTER)}`
-        : `note${index}`;
+      const key =
+        inTuplet ??
+        (BEAMED.has(item.duration)
+          ? `beat${Math.floor((item.start - barStart) / TICKS_PER_QUARTER)}`
+          : `note${index}`);
       groups.set(key, [...(groups.get(key) ?? []), index]);
     });
 
     const chosen: ('treble' | 'bass')[] = items.map(() => 'treble');
-    for (const members of groups.values()) {
+    for (const [key, members] of groups) {
       const low = Math.min(...members.map((index) => items[index].midi as number));
+      /*
+       * Heads from middle C up cross to the treble only under a beam, which carries the eye across;
+       * a tuplet of unbeamed notes stays on one staff whole. Mission Completed Successfully, bar
+       * 64: C3 G3 C4 — the C4 alone went up, its bracket torn again.
+       */
+      const whole =
+        key.startsWith('tuplet') && members.some((index) => !BEAMED.has(items[index].duration));
       for (const index of members) {
         const midi = items[index].midi as number;
-        chosen[index] = low >= TREBLE_FLOOR || midi >= GRAND_STAFF_SPLIT ? 'treble' : 'bass';
+        chosen[index] =
+          low >= TREBLE_FLOOR || (!whole && midi >= GRAND_STAFF_SPLIT) ? 'treble' : 'bass';
       }
     }
 
@@ -1071,6 +1092,11 @@ export interface ScoreOptions {
    * keeps.
    */
   alignVoices?: boolean;
+  /**
+   * Write four even notes on a dotted beat as a quadruplet, four in the time of three — see
+   * `staffItems`. Off by default: tried on Metroid first.
+   */
+  quadruplets?: boolean;
 }
 
 /**
@@ -1119,6 +1145,7 @@ export function buildScore(
     accentBeams,
     oddBars = [],
     alignVoices = true,
+    quadruplets = false,
   }: ScoreOptions = {}
 ): ScoreModel {
   const barred = barring(offset, measureTicks, mergePickup, oddBars);
@@ -1127,7 +1154,7 @@ export function buildScore(
   const grid = withClosingBar(barred.grid, end, pickupOf(mergePickup));
   const barCount = barCountOf(grid, end);
   const barsOf = (notes: readonly TickNote[]) =>
-    staffMeasures(staffItems(notes, end, grid), end, grid).map((bar) => bar.items);
+    staffMeasures(staffItems(notes, end, grid, { quadruplets }), end, grid).map((bar) => bar.items);
   const phases: Record<string, number> = {};
   const moved = <T extends TickNote>(notes: readonly T[], id?: string, given?: number): T[] => {
     const phase = !alignVoices || notes.length === 0
