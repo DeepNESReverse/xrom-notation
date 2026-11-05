@@ -1101,6 +1101,14 @@ export function buildScore(
     notes: readonly ScoreNote[];
     /** Which staves, when the caller decides rather than the notes (`partStaves`). */
     staves?: readonly ('treble' | 'bass')[];
+    /**
+     * The part's own delay to take out, when the caller worked it out from other notes than these
+     * (`voicePhase` otherwise). A player that shows a note's echoes as heads of their own — Metroid's
+     * Intro strikes each quarter of pulse 2 three times inside one note — measures the delay on the
+     * notes as the driver wrote them: on the echoes, 5 + 6 + 5 ticks, it moved the whole voice a tick.
+     * Ignored when `alignVoices` is off.
+     */
+    phase?: number;
   }[],
   drums: readonly ScoreHit[],
   totalTicks: number,
@@ -1121,8 +1129,10 @@ export function buildScore(
   const barsOf = (notes: readonly TickNote[]) =>
     staffMeasures(staffItems(notes, end, grid), end, grid).map((bar) => bar.items);
   const phases: Record<string, number> = {};
-  const moved = <T extends TickNote>(notes: readonly T[], id?: string): T[] => {
-    const phase = alignVoices && notes.length > 0 ? voicePhase(notes, offset, measureTicks, totalTicks) : 0;
+  const moved = <T extends TickNote>(notes: readonly T[], id?: string, given?: number): T[] => {
+    const phase = !alignVoices || notes.length === 0
+      ? 0
+      : (given ?? voicePhase(notes, offset, measureTicks, totalTicks));
     if (id !== undefined) phases[id] = phase;
     return shiftNotes(notes, shift - phase);
   };
@@ -1148,7 +1158,7 @@ export function buildScore(
             ticks: Math.max(...group.map((note) => note.ticks)),
           }
     );
-    const notes = moved(leads, part.id);
+    const notes = moved(leads, part.id, part.phase);
     const pitchChords = new Map<number, number[]>();
     groups.forEach((group, index) => {
       if (group.length < 2) return;

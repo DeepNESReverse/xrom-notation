@@ -1028,3 +1028,18 @@ describe('alignVoices: false', () => {
     expect(buildScore([{ id: 'p', notes: late }], [], 64, { alignVoices: false }).phases.p).toBe(0);
   });
 });
+
+describe('a phase the caller gives', () => {
+  it('takes out the delay given rather than the one these notes would suggest', () => {
+    // Metroid's Intro, pulse 2: a quarter split into its echoes, 5 + 6 + 5 ticks, measured alone,
+    // is cheaper a tick off the beat; the player gives the delay of the unsplit notes, 0.
+    const echoes = Array.from({ length: 8 }, (_, beat) => [
+      { start: beat * 16, ticks: 5, midi: 90 },
+      { start: beat * 16 + 5, ticks: 6, midi: 90 },
+      { start: beat * 16 + 11, ticks: 5, midi: 90 },
+    ]).flat();
+    expect(buildScore([{ id: 'p', notes: echoes, phase: 0 }], [], 128).phases.p).toBe(0);
+    expect(buildScore([{ id: 'p', notes: echoes, phase: 2 }], [], 128).phases.p).toBe(2);
+    expect(buildScore([{ id: 'p', notes: echoes, phase: 2 }], [], 128, { alignVoices: false }).phases.p).toBe(0);
+  });
+});
