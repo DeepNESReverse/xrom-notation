@@ -626,6 +626,21 @@ describe('exact tuplets', () => {
     expect(notes).toHaveLength(2);
   });
 
+  it('keeps a voice moved by thirds in its bars: a hair under a bar line is on it, and no gap breaks the bar', () => {
+    // Déjà Vu's pulse 2 with its echo delay (2⅔ ticks) taken out: 100 · ⅔ − 8⁄3 is 63.99999999999999.
+    const k = 2 / 3;
+    const notes = [
+      { start: 76 * k - 8 / 3, ticks: 8 * k, midi: 62 },
+      { start: 84 * k - 8 / 3, ticks: 16 * k, midi: 65 },
+      { start: 100 * k - 8 / 3, ticks: 8 * k, midi: 62 },
+      { start: 108 * k - 8 / 3, ticks: 16 * k, midi: 65 },
+      { start: 124 * k - 8 / 3, ticks: 8 * k, midi: 72 },
+    ];
+    const bars = staffMeasures(staffItems(notes, 120), 120);
+    expect(bars[1].items[0]).toMatchObject({ start: 64, midi: 62 });
+    for (const bar of bars.slice(0, 1)) expect(bar.items.reduce((sum, item) => sum + item.ticks, 0)).toBeCloseTo(64);
+  });
+
   it('takes mixed values and rests inside one bracket: a quarter and an eighth in an eighth triplet', () => {
     const third = 16 / 3;
     const items = staffItems(

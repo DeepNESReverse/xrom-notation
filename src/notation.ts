@@ -602,7 +602,16 @@ export function staffItems(
   options: StaffOptions = {}
 ): StaffItem[] {
   const items: StaffItem[] = [];
-  const sorted = [...notes].sort((a, b) => a.start - b.start);
+  // A hair off a whole tick is that tick: a third moved by a phase of thirds comes back as
+  // 63.99999999999999, and the bar line before 64 then took the note into the bar before it.
+  const whole = (value: number) => (near(value) ? Math.round(value) : value);
+  const sorted = [...notes]
+    .map((note) => {
+      const start = whole(note.start);
+      const end = whole(note.start + note.ticks);
+      return start === note.start && end - start === note.ticks ? note : { ...note, start, ticks: end - start };
+    })
+    .sort((a, b) => a.start - b.start);
   const offGrid = sorted.some((note) => !Number.isInteger(note.start) || !Number.isInteger(note.ticks));
   const ordered: TiedNote[] = offGrid ? cutAtBeats(sorted, grid) : sorted;
   let cursor = 0;
@@ -824,8 +833,11 @@ export function staffMeasures(
         inBar.pop();
         from -= last.ticks;
       }
+      // A voice moved by a phase that is not a whole tick (an echo's delay read with another quarter)
+      // leaves the gap a fraction long, and `decompose` writes whole ticks: the nearest one.
+      if (!Number.isInteger(from)) from = Math.round(from);
       let at = start + from;
-      for (const piece of decompose(from, barTicks - from, barTicks)) {
+      for (const piece of from < barTicks ? decompose(from, barTicks - from, barTicks) : []) {
         inBar.push({
           start: at,
           ticks: piece.ticks,
