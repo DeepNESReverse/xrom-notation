@@ -471,6 +471,10 @@ function exactTuplets(notes: readonly TickNote[], grid: BarGrid): Map<number, Tu
           const halfPlain = (lo: number, hi: number) =>
             plainHalf(lo, hi) && !(num === 3 && split === 1 && empty(lo, hi));
           if (span > 4 && (halfPlain(start, start + span / 2) || halfPlain(start + span / 2, start + span))) continue;
+          // Six steps to a beat that fall into two threes — no note across the middle, the steps not
+          // even — are two triplets, one an eighth: a note and its shorter echo, twice (Metroid's
+          // Intro, pulse 2 from bar 47; the user: six triplets a bar). Six even ones are a sextuplet.
+          if (span === TICKS_PER_QUARTER && twoTriplets(run, start, span)) continue;
           // The pieces: notes and the steps between them, each a value one head writes.
           const occupied = tupletOccupied(num);
           const written = span / occupied / split;
@@ -574,6 +578,34 @@ function offbeatTriplet(
  * sixteenth triplets that fill a quarter are a sextuplet, as a reader writes six in a beat. Not
  * past the beat — twelve in a half is four triplets.
  */
+/**
+ * A beat whose notes fall into two triplets, one an eighth each: no note across the middle, each
+ * half opening with a note and its notes on the thirds of its eighth, and not six even steps
+ * (those are a sextuplet).
+ */
+function twoTriplets(run: readonly TickNote[], start: number, span: number): boolean {
+  const half = span / 2;
+  const third = half / 3;
+  const middle = start + half;
+  if (run.some((note) => note.start < middle - ON_GRID && note.start + note.ticks > middle + ON_GRID)) return false;
+  // Each half opens with a note: two thirds' rest and a note (Déjà Vu's B), or a rest in the
+  // middle of the beat, are one bracket over the beat.
+  for (const at of [start, middle])
+    if (!run.some((note) => Math.abs(note.start - at) < ON_GRID)) return false;
+  const onThirds = (value: number) => near((value - start) / third);
+  if (!run.every((note) => onThirds(note.start) && onThirds(note.start + note.ticks))) return false;
+  return !run.every((note) => Math.abs(note.ticks - third) < ON_GRID);
+}
+
+/**
+ * Every head and rest of the run one step long: six even sixteenths are a sextuplet, but a note and
+ * its shorter echo twice over — an eighth and a sixteenth, an eighth and a sixteenth — are two
+ * triplets, as a reader writes them (Metroid's Intro, pulse 2 from bar 47: six triplets a bar).
+ */
+function evenSteps(items: readonly StaffItem[]): boolean {
+  return items.every((item) => Math.abs(item.ticks - items[0].ticks) < ON_GRID);
+}
+
 function exactTupletsByBeat(notes: readonly TickNote[], grid: BarGrid): Map<number, TupletRun> {
   const runs = exactTuplets(notes, grid);
   const merged = new Map<number, TupletRun>();
@@ -591,7 +623,8 @@ function exactTupletsByBeat(notes: readonly TickNote[], grid: BarGrid): Map<numb
       next[0] === run.to &&
       Math.abs(next[1].start - (run.start + run.span)) < ON_GRID &&
       next[1].span === run.span &&
-      next[1].items[0].tuplet!.num === num
+      next[1].items[0].tuplet!.num === num &&
+      evenSteps([...run.items, ...next[1].items])
     ) {
       const items = [...run.items, ...next[1].items].map((item, index, all) => ({
         ...item,

@@ -664,6 +664,26 @@ describe('exact tuplets', () => {
     expect(g.some((item) => item.tieStart || item.tieStop)).toBe(false);
   });
 
+  it("writes a note and its shorter echo, twice in a beat, as two triplets: Metroid's Intro, bar 47", () => {
+    const t = 16 / 3;
+    const notes = [
+      { start: 0, ticks: t, midi: 81 },
+      { start: t, ticks: t / 2, midi: 81 },
+      { start: 8, ticks: t, midi: 76 },
+      { start: 8 + t, ticks: t / 2, midi: 76 },
+    ];
+    const items = staffItems(notes, 16);
+    expect(items.map((item) => item.tuplet?.num)).toEqual([3, 3, 3, 3]);
+    expect(items.map((item) => item.duration)).toEqual(['8', '16', '8', '16']);
+    expect(items.filter((item) => item.tuplet?.first)).toHaveLength(2);
+  });
+
+  it('keeps six even sixteenths of a beat a sextuplet', () => {
+    const t = 16 / 6;
+    const notes = Array.from({ length: 6 }, (_, i) => ({ start: i * t, ticks: t, midi: 60 + i }));
+    expect(staffItems(notes, 16).every((item) => item.tuplet?.num === 6)).toBe(true);
+  });
+
   it('takes mixed values and rests inside one bracket: a quarter and an eighth in an eighth triplet', () => {
     const third = 16 / 3;
     const items = staffItems(
