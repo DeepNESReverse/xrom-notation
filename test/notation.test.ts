@@ -678,6 +678,19 @@ describe('exact tuplets', () => {
     expect(items.filter((item) => item.tuplet?.first)).toHaveLength(2);
   });
 
+  it("keeps an eighth, two sixteenths and an eighth a sextuplet: Super Mario Bros.' World Clear", () => {
+    const t = 16 / 6;
+    const notes = [
+      { start: 0, ticks: 2 * t, midi: 76 },
+      { start: 2 * t, ticks: t, midi: 76 },
+      { start: 3 * t, ticks: t, midi: 76 },
+      { start: 4 * t, ticks: 2 * t, midi: 76 },
+    ];
+    const items = staffItems(notes, 16);
+    expect(items.map((item) => item.tuplet?.num)).toEqual([6, 6, 6, 6]);
+    expect(items.filter((item) => item.tuplet?.first)).toHaveLength(1);
+  });
+
   it('keeps six even sixteenths of a beat a sextuplet', () => {
     const t = 16 / 6;
     const notes = Array.from({ length: 6 }, (_, i) => ({ start: i * t, ticks: t, midi: 60 + i }));

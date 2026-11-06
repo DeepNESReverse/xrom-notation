@@ -574,14 +574,11 @@ function offbeatTriplet(
 }
 
 /**
- * The exact tuplets, a run on the same grid that carries on to the beat read as one: two
- * sixteenth triplets that fill a quarter are a sextuplet, as a reader writes six in a beat. Not
- * past the beat — twelve in a half is four triplets.
- */
-/**
  * A beat whose notes fall into two triplets, one an eighth each: no note across the middle, each
- * half opening with a note and its notes on the thirds of its eighth, and not six even steps
- * (those are a sextuplet).
+ * half opening with a note, its notes on the thirds of its eighth and the second half the same
+ * rhythm as the first (a note and its shorter echo, twice), and not six even steps (those are a
+ * sextuplet). A figure that only splits at the middle — an eighth, two sixteenths and an eighth,
+ * Super Mario Bros.' World Clear — stays one sextuplet.
  */
 function twoTriplets(run: readonly TickNote[], start: number, span: number): boolean {
   const half = span / 2;
@@ -594,6 +591,12 @@ function twoTriplets(run: readonly TickNote[], start: number, span: number): boo
     if (!run.some((note) => Math.abs(note.start - at) < ON_GRID)) return false;
   const onThirds = (value: number) => near((value - start) / third);
   if (!run.every((note) => onThirds(note.start) && onThirds(note.start + note.ticks))) return false;
+  const ordered = [...run].sort((a, b) => a.start - b.start || a.ticks - b.ticks);
+  const first = ordered.filter((note) => note.start < middle - ON_GRID);
+  const second = ordered.filter((note) => note.start >= middle - ON_GRID);
+  const same = (note: TickNote, index: number) =>
+    Math.abs(second[index].start - note.start - half) < ON_GRID && Math.abs(second[index].ticks - note.ticks) < ON_GRID;
+  if (first.length !== second.length || !first.every(same)) return false;
   return !run.every((note) => Math.abs(note.ticks - third) < ON_GRID);
 }
 
@@ -606,6 +609,11 @@ function evenSteps(items: readonly StaffItem[]): boolean {
   return items.every((item) => Math.abs(item.ticks - items[0].ticks) < ON_GRID);
 }
 
+/**
+ * The exact tuplets, a run on the same grid that carries on to the beat read as one: two
+ * sixteenth triplets that fill a quarter are a sextuplet, as a reader writes six in a beat. Not
+ * past the beat — twelve in a half is four triplets.
+ */
 function exactTupletsByBeat(notes: readonly TickNote[], grid: BarGrid): Map<number, TupletRun> {
   const runs = exactTuplets(notes, grid);
   const merged = new Map<number, TupletRun>();
