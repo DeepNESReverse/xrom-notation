@@ -1060,3 +1060,17 @@ describe('a phase the caller gives', () => {
     expect(buildScore([{ id: 'p', notes: echoes, phase: 2 }], [], 128, { alignVoices: false }).phases.p).toBe(0);
   });
 });
+
+describe('a given phase that drops notes', () => {
+  it("keeps the chords on their notes when a phase pushes the first ones past tick 0 (Athena's pulse 1)", () => {
+    const notes = [
+      { start: 0, ticks: 2, midi: 60 },
+      { start: 2, ticks: 6, midi: 64 },
+      { start: 2, ticks: 6, midi: 67 },
+      { start: 10, ticks: 6, midi: 62 },
+      { start: 10, ticks: 6, midi: 65 },
+    ];
+    const model = buildScore([{ id: 'p', notes, phase: 2 }], [], 64);
+    expect(model.phases.p).toBe(2);
+  });
+});

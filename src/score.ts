@@ -1186,13 +1186,19 @@ export function buildScore(
           }
     );
     const notes = moved(leads, part.id, part.phase);
+    /** How far the part moved: a chord is filed under its lead's start on the staff's clock. */
+    const by = shift - (phases[part.id] ?? 0);
     const pitchChords = new Map<number, number[]>();
     groups.forEach((group, index) => {
       if (group.length < 2) return;
       const others = [...new Set(group.map((note) => note.midi))]
         .filter((midi) => midi !== leads[index].midi)
         .sort((a, b) => a - b);
-      if (others.length) pitchChords.set(notes[index].start, others);
+      // Not by its index among the moved notes: a phase that moves the part earlier drops the notes
+      // it pushes past tick 0, and the indices no longer meet (Athena's and Cool World's pulse 1,
+      // put on their grid by a delay of 2, threw here).
+      const start = leads[index].start + by;
+      if (others.length && start + leads[index].ticks > 0) pitchChords.set(Math.max(0, start), others);
     });
     const range = pitchChords.size
       ? [...notes, ...[...pitchChords.values()].flat().map((midi) => ({ midi }))]
