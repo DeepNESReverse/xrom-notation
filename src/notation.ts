@@ -512,12 +512,61 @@ function exactTuplets(notes: readonly TickNote[], grid: BarGrid): Map<number, Tu
         }
       }
     }
+    if (!found) found = offbeatTriplet(notes, from, grid);
     if (found) {
       runs.set(from, found);
       from = found.to - 1;
     }
   }
   return runs;
+}
+
+/**
+ * Three even eighths of a quarter triplet struck from the middle of a beat, under one bracket over
+ * the beat — the one tuplet allowed off its division.
+ *
+ * Metroid's Intro, pulse 2 from bar 41: a G struck three times a third of a quarter apart from the
+ * second eighth of the beat, the driver's echo. Read beat by beat it was two sextuplets with the
+ * middle strike tied over the line; a reader writes the three strikes as the triplet they are,
+ * and the bar as four triplets (the user: "почему это не может быть отдельной триолью"). Only
+ * exactly three heads, each a third of the quarter, starting on an eighth that is not a beat, in
+ * one bar, and nothing before them ringing into the first: anything else keeps to its beat.
+ */
+function offbeatTriplet(
+  notes: readonly TickNote[],
+  from: number,
+  grid: BarGrid
+): { to: number; start: number; span: number; items: StaffItem[] } | null {
+  const begin = notes[from].start;
+  const barStart = barStartOf(grid, barAt(grid, begin + ON_GRID));
+  const barEnd = barStart + barTicksOf(grid, barAt(grid, begin + ON_GRID));
+  const span = TICKS_PER_QUARTER;
+  const unit = span / 3;
+  const eighth = TICKS_PER_QUARTER / 2;
+  const at = begin - barStart;
+  if (!near(at / eighth) || near(at / span) || begin + span > barEnd + ON_GRID) return null;
+  const run = notes.slice(from, from + 3);
+  if (run.length < 3) return null;
+  if (!run.every((note, k) => Math.abs(note.start - (begin + k * unit)) < ON_GRID && Math.abs(note.ticks - unit) < ON_GRID))
+    return null;
+  if (from > 0 && notes[from - 1].start + notes[from - 1].ticks > begin + ON_GRID) return null;
+  const value = VALUES.find((candidate) => Math.abs(candidate.ticks - eighth) < ON_GRID && candidate.dots === 0);
+  if (!value) return null;
+  return {
+    to: from + 3,
+    start: begin,
+    span,
+    items: run.map((note, k) => ({
+      start: note.start,
+      ticks: note.ticks,
+      midi: note.midi,
+      duration: value.duration,
+      dots: 0,
+      tieStart: false,
+      tieStop: false,
+      tuplet: { num: 3, occupied: 2, first: k === 0, last: k === 2 },
+    })),
+  };
 }
 
 /**
@@ -613,7 +662,15 @@ export function staffItems(
     })
     .sort((a, b) => a.start - b.start);
   const offGrid = sorted.some((note) => !Number.isInteger(note.start) || !Number.isInteger(note.ticks));
-  const ordered: TiedNote[] = offGrid ? cutAtBeats(sorted, grid) : sorted;
+  // A tuplet the notes already fill as they stand (nine in a half) keeps its heads whole; only the
+  // notes no such run holds are cut at the beats they cross.
+  const held = new Set<number>();
+  if (offGrid)
+    for (const [from, run] of exactTupletsByBeat(sorted, grid))
+      // Three heads at least: one long note fits some tuplet of a whole bar (Déjà Vu's B, a
+      // twelve), and that is not a tuplet anyone plays.
+      if (run.to - from >= 3) for (let k = from; k < run.to; k++) held.add(k);
+  const ordered: TiedNote[] = offGrid ? cutAtBeats(sorted, grid, held) : sorted;
   let cursor = 0;
 
   const push = (start: number, length: number, midi: number | null) => {
@@ -746,32 +803,36 @@ type TiedNote = TickNote & { tieIn?: boolean; tieOn?: boolean };
  * to close on. Déjà Vu's Theme, read with a quarter of 24 ticks: a B held 144 ticks from two
  * thirds into a beat came out a dotted thirty-second's rest and a B a tick late; cut at the beat it
  * is the triplet's last eighth, tied on to the whole beats after it. Only the cut where the grid is
- * left, and only when a whole beat or more lies past it: a long note's whole beats stay one note
- * for `decompose` to spell, and the heads of a tuplet over two beats (nine in a half) that merely
- * cross the middle beat are not cut out of their bracket.
+ * left: a long note's whole beats stay one note for `decompose` to spell. Metroid's Intro, pulse 2
+ * from bar 41, strikes a G every third of a quarter from the middle of a beat, and its second strike
+ * runs over the beat: cut there, each beat is a sextuplet. Notes a tuplet already holds as they stand
+ * (`keep`: nine in a half, crossing its middle beat) are not cut out of their bracket.
  */
-function cutAtBeats(notes: readonly TickNote[], grid: BarGrid): TiedNote[] {
+function cutAtBeats(notes: readonly TickNote[], grid: BarGrid, keep: ReadonlySet<number>): TiedNote[] {
   const beatLine = (tick: number, up: boolean) => {
     const barStart = barStartOf(grid, barAt(grid, tick + (up ? ON_GRID : -ON_GRID)));
     const beats = (tick - barStart) / TICKS_PER_QUARTER;
     return barStart + (up ? Math.ceil(beats - ON_GRID) : Math.floor(beats + ON_GRID)) * TICKS_PER_QUARTER;
   };
   const out: TiedNote[] = [];
-  for (const note of notes) {
+  notes.forEach((note, index) => {
     const end = note.start + note.ticks;
     const cuts: number[] = [];
+    if (keep.has(index)) {
+      out.push(note);
+      return;
+    }
     if (!near(note.start)) {
       const line = beatLine(note.start, true);
-      if (line + TICKS_PER_QUARTER <= end + ON_GRID) cuts.push(line);
+      if (line < end - ON_GRID) cuts.push(line);
     }
     if (!near(end)) {
       const line = beatLine(end, false);
-      if (line - TICKS_PER_QUARTER >= note.start - ON_GRID && !cuts.some((cut) => Math.abs(cut - line) < ON_GRID))
-        cuts.push(line);
+      if (line > note.start + ON_GRID && !cuts.some((cut) => Math.abs(cut - line) < ON_GRID)) cuts.push(line);
     }
     if (cuts.length === 0) {
       out.push(note);
-      continue;
+      return;
     }
     const edges = [note.start, ...cuts.sort((a, b) => a - b), end];
     for (let k = 0; k + 1 < edges.length; k++) {
@@ -783,7 +844,7 @@ function cutAtBeats(notes: readonly TickNote[], grid: BarGrid): TiedNote[] {
         ...(k + 2 < edges.length ? { tieOn: true } : {}),
       });
     }
-  }
+  });
   return out;
 }
 

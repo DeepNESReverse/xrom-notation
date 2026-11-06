@@ -641,6 +641,29 @@ describe('exact tuplets', () => {
     for (const bar of bars.slice(0, 1)) expect(bar.items.reduce((sum, item) => sum + item.ticks, 0)).toBeCloseTo(64);
   });
 
+  it("writes three strikes from the middle of a beat as one triplet over it: Metroid's Intro, pulse 2", () => {
+    // An A struck twice in an eighth (⅔ + ⅓ of it), then a G struck three times from the middle of
+    // the beat, a third of a quarter apart, then the A again: three triplets, the G's over the beat.
+    const t = 16 / 3;
+    const notes = [
+      { start: 0, ticks: t, midi: 69 },
+      { start: t, ticks: t / 2, midi: 69 },
+      { start: 8, ticks: t, midi: 79 },
+      { start: 8 + t, ticks: t, midi: 79 },
+      { start: 8 + 2 * t, ticks: t, midi: 79 },
+      { start: 24, ticks: t, midi: 69 },
+      { start: 24 + t, ticks: t / 2, midi: 69 },
+    ];
+    const items = staffItems(notes, 32);
+    expect(items.every((item) => item.tuplet?.num === 3)).toBe(true);
+    const g = items.filter((item) => item.midi === 79);
+    expect(g).toHaveLength(3);
+    expect(g.map((item) => item.duration)).toEqual(['8', '8', '8']);
+    expect(g[0].tuplet).toMatchObject({ first: true });
+    expect(g[2].tuplet).toMatchObject({ last: true });
+    expect(g.some((item) => item.tieStart || item.tieStop)).toBe(false);
+  });
+
   it('takes mixed values and rests inside one bracket: a quarter and an eighth in an eighth triplet', () => {
     const third = 16 / 3;
     const items = staffItems(
