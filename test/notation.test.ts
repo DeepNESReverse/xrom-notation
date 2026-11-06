@@ -691,6 +691,27 @@ describe('exact tuplets', () => {
     expect(items.filter((item) => item.tuplet?.first)).toHaveLength(1);
   });
 
+  it("keeps every bracket to its beat with beatTuplets: Darkwing Duck's dotted quarter across the beat", () => {
+    const third = 16 / 3;
+    const notes = [
+      { start: 0, ticks: 2 * third, midi: 72 },
+      { start: 2 * third, ticks: 3 * third, midi: 74 },
+      { start: 5 * third, ticks: third, midi: 76 },
+    ];
+    // As one tuplet over the two beats: a quarter, a dotted quarter and an eighth under a three.
+    const wide = staffItems(notes, 32);
+    expect(wide.filter((item) => item.tuplet?.first)).toHaveLength(1);
+    const items = staffItems(notes, 32, undefined, { beatTuplets: true });
+    expect(items.map((item) => [item.midi, item.duration, item.tuplet?.num ?? 0])).toEqual([
+      [72, 'q', 3],
+      [74, '8', 3],
+      [74, 'q', 3],
+      [76, '8', 3],
+    ]);
+    expect(items[1].tieStart).toBe(true);
+    expect(items.filter((item) => item.tuplet?.first)).toHaveLength(2);
+  });
+
   it('keeps six even sixteenths of a beat a sextuplet', () => {
     const t = 16 / 6;
     const notes = Array.from({ length: 6 }, (_, i) => ({ start: i * t, ticks: t, midi: 60 + i }));

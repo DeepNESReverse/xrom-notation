@@ -1097,6 +1097,8 @@ export interface ScoreOptions {
    * `staffItems`. Off by default: tried on Metroid first.
    */
   quadruplets?: boolean;
+  /** No tuplet bracket wider than a beat — see `staffItems`'s `beatTuplets`. Off by default. */
+  beatTuplets?: boolean;
 }
 
 /**
@@ -1146,6 +1148,7 @@ export function buildScore(
     oddBars = [],
     alignVoices = true,
     quadruplets = false,
+    beatTuplets = false,
   }: ScoreOptions = {}
 ): ScoreModel {
   const barred = barring(offset, measureTicks, mergePickup, oddBars);
@@ -1154,7 +1157,7 @@ export function buildScore(
   const grid = withClosingBar(barred.grid, end, pickupOf(mergePickup));
   const barCount = barCountOf(grid, end);
   const barsOf = (notes: readonly TickNote[]) =>
-    staffMeasures(staffItems(notes, end, grid, { quadruplets }), end, grid).map((bar) => bar.items);
+    staffMeasures(staffItems(notes, end, grid, { quadruplets, beatTuplets }), end, grid).map((bar) => bar.items);
   const phases: Record<string, number> = {};
   const moved = <T extends TickNote>(notes: readonly T[], id?: string, given?: number): T[] => {
     const phase = !alignVoices || notes.length === 0

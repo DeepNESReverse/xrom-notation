@@ -425,7 +425,11 @@ const near = (value: number) => Math.abs(value - Math.round(value)) < ON_GRID;
  *
  * Whole-tick music never has one: no span here divides by three, five or seven into whole ticks.
  */
-function exactTuplets(notes: readonly TickNote[], grid: BarGrid): Map<number, TupletRun> {
+function exactTuplets(
+  notes: readonly TickNote[],
+  grid: BarGrid,
+  spans: readonly number[] = TUPLET_SPANS
+): Map<number, TupletRun> {
   const runs = new Map<number, TupletRun>();
   for (let from = 0; from < notes.length; from++) {
     const begin = notes[from].start;
@@ -433,7 +437,7 @@ function exactTuplets(notes: readonly TickNote[], grid: BarGrid): Map<number, Tu
     const barStart = barStartOf(grid, bar);
     const barEnd = barStart + barTicksOf(grid, bar);
     let found: TupletRun | null = null;
-    for (const span of TUPLET_SPANS) {
+    for (const span of spans) {
       if (found) break;
       // On the grid the span itself keeps — a beat for anything a beat or longer.
       const step = Math.min(span, TICKS_PER_QUARTER);
@@ -614,8 +618,12 @@ function evenSteps(items: readonly StaffItem[]): boolean {
  * sixteenth triplets that fill a quarter are a sextuplet, as a reader writes six in a beat. Not
  * past the beat — twelve in a half is four triplets.
  */
-function exactTupletsByBeat(notes: readonly TickNote[], grid: BarGrid): Map<number, TupletRun> {
-  const runs = exactTuplets(notes, grid);
+function exactTupletsByBeat(
+  notes: readonly TickNote[],
+  grid: BarGrid,
+  spans: readonly number[] = TUPLET_SPANS
+): Map<number, TupletRun> {
+  const runs = exactTuplets(notes, grid, spans);
   const merged = new Map<number, TupletRun>();
   const ordered = [...runs.entries()].sort((a, b) => a[0] - b[0]);
   for (let i = 0; i < ordered.length; i++) {
@@ -683,7 +691,19 @@ function quadrupletAt(
 export interface StaffOptions {
   /** Four even notes on a dotted beat as a quadruplet — see `quadrupletAt`. */
   quadruplets?: boolean;
+  /**
+   * No bracket wider than a beat: a note across a beat is cut there and tied, and every beat
+   * carries its own tuplet. For a track read in simple time with triplets (a "12/8" counted 24
+   * ticks to the quarter): Darkwing Duck's shuffles syncopate a dotted quarter across the beat,
+   * and as one tuplet over two or four beats (a quarter, a dotted quarter, an eighth under a
+   * three) that read as nothing anyone writes.
+   */
+  beatTuplets?: boolean;
 }
+
+/** The spans a tuplet may take: up to a beat with `beatTuplets`, up to a bar otherwise. */
+const spansOf = (options: StaffOptions): readonly number[] =>
+  options.beatTuplets ? TUPLET_SPANS.filter((span) => span <= TICKS_PER_QUARTER) : TUPLET_SPANS;
 
 export function staffItems(
   notes: readonly TickNote[],
@@ -707,7 +727,7 @@ export function staffItems(
   // notes no such run holds are cut at the beats they cross.
   const held = new Set<number>();
   if (offGrid)
-    for (const [from, run] of exactTupletsByBeat(sorted, grid))
+    for (const [from, run] of exactTupletsByBeat(sorted, grid, spansOf(options)))
       // Three heads at least: one long note fits some tuplet of a whole bar (Déjà Vu's B, a
       // twelve), and that is not a tuplet anyone plays.
       if (run.to - from >= 3) for (let k = from; k < run.to; k++) held.add(k);
@@ -751,7 +771,7 @@ export function staffItems(
 
   const tuplets = tupletGroups(ordered, grid);
   // Exact tuplets only where some note is off the whole-tick grid: whole-tick music has none.
-  const exact = offGrid ? exactTupletsByBeat(ordered, grid) : null;
+  const exact = offGrid ? exactTupletsByBeat(ordered, grid, spansOf(options)) : null;
   let skipTo = -1;
   /** The heads written for a piece of a cut note, tied to the pieces either side of it. */
   const tie = (note: TiedNote, from: number) => {
