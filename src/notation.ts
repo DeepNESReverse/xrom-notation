@@ -463,7 +463,14 @@ function exactTuplets(notes: readonly TickNote[], grid: BarGrid): Map<number, Tu
                   near(note.start) &&
                   near(note.start + note.ticks)
               );
-          if (span > 4 && (plainHalf(start, start + span / 2) || plainHalf(start + span / 2, start + span))) continue;
+          // A half with no note in it is a rest, and a rest is plain too — except under a triplet of the
+          // whole span: two thirds' rest and the last third (Déjà Vu's B, from a triplet's last eighth)
+          // are a quarter triplet's rest and eighth, not an eighth's rest and a sixteenth triplet.
+          const empty = (lo: number, hi: number) =>
+            !run.some((note) => note.start < hi - ON_GRID && note.start + note.ticks > lo + ON_GRID);
+          const halfPlain = (lo: number, hi: number) =>
+            plainHalf(lo, hi) && !(num === 3 && split === 1 && empty(lo, hi));
+          if (span > 4 && (halfPlain(start, start + span / 2) || halfPlain(start + span / 2, start + span))) continue;
           // The pieces: notes and the steps between them, each a value one head writes.
           const occupied = tupletOccupied(num);
           const written = span / occupied / split;
@@ -595,7 +602,9 @@ export function staffItems(
   options: StaffOptions = {}
 ): StaffItem[] {
   const items: StaffItem[] = [];
-  const ordered = [...notes].sort((a, b) => a.start - b.start);
+  const sorted = [...notes].sort((a, b) => a.start - b.start);
+  const offGrid = sorted.some((note) => !Number.isInteger(note.start) || !Number.isInteger(note.ticks));
+  const ordered: TiedNote[] = offGrid ? cutAtBeats(sorted, grid) : sorted;
   let cursor = 0;
 
   const push = (start: number, length: number, midi: number | null) => {
@@ -635,21 +644,37 @@ export function staffItems(
 
   const tuplets = tupletGroups(ordered, grid);
   // Exact tuplets only where some note is off the whole-tick grid: whole-tick music has none.
-  const exact = ordered.some((note) => !Number.isInteger(note.start) || !Number.isInteger(note.ticks))
-    ? exactTupletsByBeat(ordered, grid)
-    : null;
+  const exact = offGrid ? exactTupletsByBeat(ordered, grid) : null;
   let skipTo = -1;
+  /** The heads written for a piece of a cut note, tied to the pieces either side of it. */
+  const tie = (note: TiedNote, from: number) => {
+    if (!note.tieIn && !note.tieOn) return;
+    const heads = items
+      .slice(from)
+      .filter((item) => item.midi === note.midi && item.start >= note.start - ON_GRID && item.start < note.start + note.ticks - ON_GRID);
+    if (heads.length === 0) return;
+    if (note.tieIn) heads[0].tieStop = true;
+    if (note.tieOn) heads[heads.length - 1].tieStart = true;
+  };
 
   ordered.forEach((note, index) => {
     if (index < skipTo) return;
     const run = exact?.get(index);
     if (run) {
       if (run.start > cursor) push(cursor, run.start - cursor, null);
+      const from = items.length;
       items.push(...run.items);
+      for (let k = index; k < run.to; k++) tie(ordered[k], from);
       cursor = run.start + run.span;
       skipTo = run.to;
       return;
     }
+    const from = items.length;
+    handle(note, index);
+    tie(note, from);
+  });
+
+  function handle(note: TiedNote, index: number) {
     if (note.start > cursor) push(cursor, note.start - cursor, null);
     cursor = Math.max(cursor, note.start);
 
@@ -695,10 +720,62 @@ export function staffItems(
 
     push(cursor, length, note.midi);
     cursor += length;
-  });
+  }
 
   if (cursor < totalTicks) push(cursor, totalTicks - cursor, null);
   return items;
+}
+
+/** A note, or a piece of one cut at a beat by `cutAtBeats`, tied to the piece before or after it. */
+type TiedNote = TickNote & { tieIn?: boolean; tieOn?: boolean };
+
+/**
+ * Notes off the whole-tick grid that run over a beat, cut at it: the piece inside the beat where
+ * the note starts (or ends) off the grid, and the rest, tied.
+ *
+ * A tuplet is read beat by beat, and a note that reaches past its beat leaves the bracket nothing
+ * to close on. Déjà Vu's Theme, read with a quarter of 24 ticks: a B held 144 ticks from two
+ * thirds into a beat came out a dotted thirty-second's rest and a B a tick late; cut at the beat it
+ * is the triplet's last eighth, tied on to the whole beats after it. Only the cut where the grid is
+ * left, and only when a whole beat or more lies past it: a long note's whole beats stay one note
+ * for `decompose` to spell, and the heads of a tuplet over two beats (nine in a half) that merely
+ * cross the middle beat are not cut out of their bracket.
+ */
+function cutAtBeats(notes: readonly TickNote[], grid: BarGrid): TiedNote[] {
+  const beatLine = (tick: number, up: boolean) => {
+    const barStart = barStartOf(grid, barAt(grid, tick + (up ? ON_GRID : -ON_GRID)));
+    const beats = (tick - barStart) / TICKS_PER_QUARTER;
+    return barStart + (up ? Math.ceil(beats - ON_GRID) : Math.floor(beats + ON_GRID)) * TICKS_PER_QUARTER;
+  };
+  const out: TiedNote[] = [];
+  for (const note of notes) {
+    const end = note.start + note.ticks;
+    const cuts: number[] = [];
+    if (!near(note.start)) {
+      const line = beatLine(note.start, true);
+      if (line + TICKS_PER_QUARTER <= end + ON_GRID) cuts.push(line);
+    }
+    if (!near(end)) {
+      const line = beatLine(end, false);
+      if (line - TICKS_PER_QUARTER >= note.start - ON_GRID && !cuts.some((cut) => Math.abs(cut - line) < ON_GRID))
+        cuts.push(line);
+    }
+    if (cuts.length === 0) {
+      out.push(note);
+      continue;
+    }
+    const edges = [note.start, ...cuts.sort((a, b) => a - b), end];
+    for (let k = 0; k + 1 < edges.length; k++) {
+      out.push({
+        ...note,
+        start: edges[k],
+        ticks: edges[k + 1] - edges[k],
+        ...(k > 0 ? { tieIn: true } : {}),
+        ...(k + 2 < edges.length ? { tieOn: true } : {}),
+      });
+    }
+  }
+  return out;
 }
 
 /**

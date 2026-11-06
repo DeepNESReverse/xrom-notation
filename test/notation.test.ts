@@ -615,6 +615,17 @@ describe('exact tuplets', () => {
     expect(items[11]).toMatchObject({ start: 16, duration: 'h', dots: 1 });
   });
 
+  it("cuts a note held from a triplet's last third at the beat and ties it on: Déjà Vu's B", () => {
+    // Two thirds of a beat's rest, then a B held two beats and a third: the triplet's last eighth,
+    // tied to a half note — not a dotted thirty-second's rest and a B a tick late.
+    const items = staffItems([{ start: 32 / 3, ticks: 16 / 3 + 32, midi: 71 }], 64);
+    const notes = items.filter((item) => item.midi !== null);
+    expect(items[0]).toMatchObject({ midi: null, duration: 'q', tuplet: { num: 3, first: true } });
+    expect(notes[0]).toMatchObject({ start: 32 / 3, duration: '8', tieStart: true, tuplet: { num: 3, last: true } });
+    expect(notes[1]).toMatchObject({ start: 16, duration: 'h', tieStop: true, tieStart: false });
+    expect(notes).toHaveLength(2);
+  });
+
   it('takes mixed values and rests inside one bracket: a quarter and an eighth in an eighth triplet', () => {
     const third = 16 / 3;
     const items = staffItems(
