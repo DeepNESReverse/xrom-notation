@@ -857,10 +857,15 @@ describe('named tuplets', () => {
     expect(heads.every((item) => item.tuplet!.num === 4 && item.tuplet!.occupied === 5)).toBe(true);
     expect(heads.filter((item) => item.tuplet!.first).map((item) => item.start)).toEqual([0, 40]);
     expect(heads.filter((item) => item.tuplet!.last).map((item) => item.start)).toEqual([30, 60]);
-    // The bar's last quarter, after the brackets, is a rest.
-    const after = items.filter((item) => item.start >= 80);
+    // The last A2 rings 22 ticks: its quarter in the bracket, tied on to a thirty-second after it.
+    const last = heads[heads.length - 1];
+    expect(last.tieStart).toBe(true);
+    const tail = items.find((item) => item.start === 80)!;
+    expect([tail.midi, tail.ticks, tail.duration, tail.tieStop, tail.tuplet]).toEqual([45, 2, '32', true, undefined]);
+    // Then rests to the bar line.
+    const after = items.filter((item) => item.start >= 82);
     expect(after.every((item) => item.midi === null)).toBe(true);
-    expect(after.reduce((sum, item) => sum + item.ticks, 0)).toBe(16);
+    expect(after.reduce((sum, item) => sum + item.ticks, 0)).toBe(14);
   });
 
   it('leaves whole-tick notes alone when none is named', () => {

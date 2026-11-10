@@ -407,6 +407,8 @@ interface TupletRun {
   start: number;
   span: number;
   items: StaffItem[];
+  /** A named tuplet's last note sounding on past the bracket: the ticks it is tied on for. */
+  tail?: { ticks: number; midi: number };
 }
 
 const near = (value: number) => Math.abs(value - Math.round(value)) < ON_GRID;
@@ -712,7 +714,9 @@ export interface StaffOptions {
  * every 10 ticks, four in the time of five eighths (4:5 over 40).
  *
  * The notes starting inside the span are its heads, each the whole steps of `span / num` it covers,
- * the steps between them rests; a note running past the span's end is written to it.
+ * the steps between them rests. The last note may sound on past the span's end: its head is written
+ * to the end and tied on, in ordinary values, for the rest — Geimos's last A2 rings 22 ticks, two
+ * steps of the bracket and a thirty-second after it.
  */
 export interface NamedTuplet {
   start: number;
@@ -762,7 +766,12 @@ function namedTuplets(notes: readonly TickNote[], named: readonly NamedTuplet[])
       tieStop: false,
       tuplet: { num, occupied, first: index === 0, last: index === pieces.length - 1 },
     }));
-    runs.set(from, { to, start, span, items });
+    // The last note on past the bracket, and the bracket ending on its head: tied on after it.
+    const last = notes[to - 1];
+    const over = last.start + last.ticks - (start + span);
+    const tail =
+      over > ON_GRID && pieces[pieces.length - 1].midi !== null ? { ticks: over, midi: last.midi } : undefined;
+    runs.set(from, { to, start, span, items, tail });
   }
   return runs;
 }
@@ -868,6 +877,15 @@ export function staffItems(
       items.push(...run.items);
       for (let k = index; k < run.to; k++) tie(ordered[k], from);
       cursor = run.start + run.span;
+      if (run.tail) {
+        const head = items.length - 1;
+        push(cursor, run.tail.ticks, run.tail.midi);
+        if (items.length > head + 1) {
+          items[head].tieStart = true;
+          items[head + 1].tieStop = true;
+        }
+        cursor += run.tail.ticks;
+      }
       skipTo = run.to;
       return;
     }
