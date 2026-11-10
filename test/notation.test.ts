@@ -838,3 +838,32 @@ describe('staffItems with quadruplets', () => {
     expect(items.every((item) => item.duration === '16' && item.dots === 1 && !item.tuplet)).toBe(true);
   });
 });
+
+describe('named tuplets', () => {
+  // Geimos's Round Start, the triangle's last bar: A2 every 10 ticks under eighths of 8, the last
+  // ringing 22 — four in the time of five eighths, twice.
+  const grid = barGrid(96);
+  const notes: TickNote[] = [0, 10, 20, 30, 40, 50].map((start) => ({ start, ticks: 10, midi: 45 }));
+  notes.push({ start: 60, ticks: 22, midi: 45 });
+  const named = [
+    { start: 0, span: 40, num: 4, occupied: 5 },
+    { start: 40, span: 40, num: 4, occupied: 5 },
+  ];
+
+  it('writes the notes as the tuplet the caller names', () => {
+    const items = staffItems(notes, 96, grid, { tuplets: named });
+    const heads = items.filter((item) => item.tuplet);
+    expect(heads.map((item) => item.duration)).toEqual(['8', '8', '8', '8', '8', '8', 'q']);
+    expect(heads.every((item) => item.tuplet!.num === 4 && item.tuplet!.occupied === 5)).toBe(true);
+    expect(heads.filter((item) => item.tuplet!.first).map((item) => item.start)).toEqual([0, 40]);
+    expect(heads.filter((item) => item.tuplet!.last).map((item) => item.start)).toEqual([30, 60]);
+    // The bar's last quarter, after the brackets, is a rest.
+    const after = items.filter((item) => item.start >= 80);
+    expect(after.every((item) => item.midi === null)).toBe(true);
+    expect(after.reduce((sum, item) => sum + item.ticks, 0)).toBe(16);
+  });
+
+  it('leaves whole-tick notes alone when none is named', () => {
+    expect(staffItems(notes, 96, grid).some((item) => item.tuplet)).toBe(false);
+  });
+});

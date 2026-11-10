@@ -699,6 +699,72 @@ export interface StaffOptions {
    * three) that read as nothing anyone writes.
    */
   beatTuplets?: boolean;
+  /** Tuplets the caller names, of any ratio, where the notes are on whole ticks — see `NamedTuplet`. */
+  tuplets?: readonly NamedTuplet[];
+}
+
+/**
+ * A tuplet the caller names rather than one read from the notes: `num` heads in the time of
+ * `occupied`, over `span` ticks from `start` (the staff's ticks). For a ratio no reading finds —
+ * the reading only takes counts that are not powers of two over a span that is one — and for notes
+ * already on whole ticks, which the reading never re-reads. Geimos's Round Start ends with the
+ * triangle striking every 12.5 frames under eighths of 10: on its grid of 1.25 frames a tick, a note
+ * every 10 ticks, four in the time of five eighths (4:5 over 40).
+ *
+ * The notes starting inside the span are its heads, each the whole steps of `span / num` it covers,
+ * the steps between them rests; a note running past the span's end is written to it.
+ */
+export interface NamedTuplet {
+  start: number;
+  span: number;
+  num: number;
+  occupied: number;
+}
+
+/**
+ * The runs of the named tuplets, by the index of each one's first note — as `exactTuplets` gives
+ * its own. A tuplet whose pieces some value cannot write, or that holds no note, is left out.
+ */
+function namedTuplets(notes: readonly TickNote[], named: readonly NamedTuplet[]): Map<number, TupletRun> {
+  const runs = new Map<number, TupletRun>();
+  for (const { start, span, num, occupied } of named) {
+    const from = notes.findIndex((note) => note.start >= start - ON_GRID);
+    if (from < 0 || notes[from].start >= start + span - ON_GRID) continue;
+    // A note before the span that sounds into it leaves the bracket no clean start.
+    if (from > 0 && notes[from - 1].start + notes[from - 1].ticks > start + ON_GRID) continue;
+    let to = from;
+    while (to < notes.length && notes[to].start < start + span - ON_GRID) to++;
+    const unit = span / num;
+    const written = span / occupied;
+    const pieces: { from: number; length: number; midi: number | null; at?: number }[] = [];
+    let at = 0;
+    for (let k = from; k < to; k++) {
+      const a = Math.round((notes[k].start - start) / unit);
+      const b = Math.min(num, Math.round((notes[k].start + notes[k].ticks - start) / unit));
+      if (a < at || b <= a) break;
+      if (a > at) pieces.push({ from: at, length: a - at, midi: null });
+      pieces.push({ from: a, length: b - a, midi: notes[k].midi, at: notes[k].start });
+      at = b;
+    }
+    if (at < num) pieces.push({ from: at, length: num - at, midi: null });
+    const values = pieces.map((piece) =>
+      VALUES.find((value) => Math.abs(value.ticks - piece.length * written) < ON_GRID)
+    );
+    if (pieces.reduce((sum, piece) => sum + piece.length, 0) !== num || values.some((value) => !value)) continue;
+    const starts = pieces.map((piece) => piece.at ?? start + piece.from * unit);
+    const items = pieces.map((piece, index): StaffItem => ({
+      start: starts[index],
+      ticks: (index + 1 < pieces.length ? starts[index + 1] : start + span) - starts[index],
+      midi: piece.midi,
+      duration: values[index]!.duration,
+      dots: values[index]!.dots,
+      tieStart: false,
+      tieStop: false,
+      tuplet: { num, occupied, first: index === 0, last: index === pieces.length - 1 },
+    }));
+    runs.set(from, { to, start, span, items });
+  }
+  return runs;
 }
 
 /** The spans a tuplet may take: up to a beat with `beatTuplets`, up to a bar otherwise. */
@@ -771,7 +837,16 @@ export function staffItems(
 
   const tuplets = tupletGroups(ordered, grid);
   // Exact tuplets only where some note is off the whole-tick grid: whole-tick music has none.
-  const exact = offGrid ? exactTupletsByBeat(ordered, grid, spansOf(options)) : null;
+  const read = offGrid ? exactTupletsByBeat(ordered, grid, spansOf(options)) : null;
+  // The caller's own tuplets first: where one is named, what the reading finds there gives way.
+  const named = options.tuplets?.length ? namedTuplets(ordered, options.tuplets) : null;
+  let exact = read;
+  if (named?.size) {
+    exact = new Map(named);
+    const taken = [...named].map(([from, run]) => [from, run.to]);
+    for (const [from, run] of read ?? [])
+      if (!taken.some(([a, b]) => from < b && run.to > a)) exact.set(from, run);
+  }
   let skipTo = -1;
   /** The heads written for a piece of a cut note, tied to the pieces either side of it. */
   const tie = (note: TiedNote, from: number) => {

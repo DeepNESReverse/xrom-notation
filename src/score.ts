@@ -26,6 +26,7 @@ import {
   staffMeasures,
   voicePhase,
   type BarGrid,
+  type NamedTuplet,
   type OddBar,
   type StaffItem,
   type TickNote,
@@ -1099,6 +1100,11 @@ export interface ScoreOptions {
   quadruplets?: boolean;
   /** No tuplet bracket wider than a beat — see `staffItems`'s `beatTuplets`. Off by default. */
   beatTuplets?: boolean;
+  /**
+   * Tuplets named by the caller, each in one part (`part`, its id) — see `NamedTuplet`. In the
+   * PIECE's ticks, like `accentBeams`; moved onto the staff's clock with the part.
+   */
+  tuplets?: readonly (NamedTuplet & { part: string })[];
 }
 
 /**
@@ -1149,6 +1155,7 @@ export function buildScore(
     alignVoices = true,
     quadruplets = false,
     beatTuplets = false,
+    tuplets = [],
   }: ScoreOptions = {}
 ): ScoreModel {
   const barred = barring(offset, measureTicks, mergePickup, oddBars);
@@ -1156,8 +1163,10 @@ export function buildScore(
   const end = totalTicks + shift;
   const grid = withClosingBar(barred.grid, end, pickupOf(mergePickup));
   const barCount = barCountOf(grid, end);
-  const barsOf = (notes: readonly TickNote[]) =>
-    staffMeasures(staffItems(notes, end, grid, { quadruplets, beatTuplets }), end, grid).map((bar) => bar.items);
+  const barsOf = (notes: readonly TickNote[], named: readonly NamedTuplet[] = []) =>
+    staffMeasures(staffItems(notes, end, grid, { quadruplets, beatTuplets, tuplets: named }), end, grid).map(
+      (bar) => bar.items
+    );
   const phases: Record<string, number> = {};
   const moved = <T extends TickNote>(notes: readonly T[], id?: string, given?: number): T[] => {
     const phase = !alignVoices || notes.length === 0
@@ -1225,7 +1234,10 @@ export function buildScore(
       : new Set<number>();
     const across = crossBarRuns(notes, grid, accents);
     const heads = () => {
-      const written = attachHeads(barsOf(notes), {
+      const named = tuplets
+        .filter((tuplet) => tuplet.part === part.id)
+        .map(({ start, span, num, occupied }) => ({ start: start + by, span, num, occupied }));
+      const written = attachHeads(barsOf(notes, named), {
         effects,
         graces: new Map(
           notes.filter((note) => note.grace?.length).map((note) => [note.start, note.grace!])
