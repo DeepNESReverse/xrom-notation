@@ -1183,7 +1183,13 @@ export interface KeySignature {
 
 const SHARP_ORDER = ['f', 'c', 'g', 'd', 'a', 'e', 'b'];
 const FLAT_ORDER = ['b', 'e', 'a', 'd', 'g', 'c', 'f'];
-/** Signed number of sharps (+) or flats (−) by VexFlow major key name. */
+/**
+ * Signed number of sharps (+) or flats (−) by VexFlow key name, major or minor.
+ *
+ * A minor name counts as its relative major's: VexFlow draws `Cm` as three flats, so the notes
+ * under it must be spelt in three flats too. Without the minor names `Cm` counted as C — the
+ * signature showed three flats while every E-flat was written D-sharp against them.
+ */
 const KEY_ALTERATIONS: Readonly<Record<string, number>> = {
   C: 0,
   G: 1,
@@ -1200,6 +1206,21 @@ const KEY_ALTERATIONS: Readonly<Record<string, number>> = {
   Db: -5,
   Gb: -6,
   Cb: -7,
+  Am: 0,
+  Em: 1,
+  Bm: 2,
+  'F#m': 3,
+  'C#m': 4,
+  'G#m': 5,
+  'D#m': 6,
+  'A#m': 7,
+  Dm: -1,
+  Gm: -2,
+  Cm: -3,
+  Fm: -4,
+  Bbm: -5,
+  Ebm: -6,
+  Abm: -7,
 };
 
 /**

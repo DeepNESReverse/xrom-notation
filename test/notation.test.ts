@@ -271,6 +271,16 @@ describe('a bar of 2/4', () => {
 });
 
 describe('keyOf and flat spelling', () => {
+  it('reads a minor name as its relative major — Cm is three flats, Em one sharp', () => {
+    expect(keyOf('Cm')).toEqual(keyOf('Eb'));
+    expect(keyOf('Em')).toEqual(keyOf('G'));
+    expect(keyOf('F#m')).toEqual(keyOf('A'));
+    expect(keyOf('Bbm')).toEqual(keyOf('Db'));
+    // Under Cm an E-flat is the key's own E, not D-sharp.
+    expect(staffKey(63, keyOf('Cm'))).toBe('eb/4');
+    expect(keyOf('Gm+Ab')).toEqual(keyOf('Bb+Ab'));
+  });
+
   it('spells a black key the way the key signature has it', () => {
     // Five flats (rat race): every black key is in the signature.
     expect([61, 63, 66, 68, 70].map((midi) => staffKey(midi, keyOf('Db')))).toEqual([
